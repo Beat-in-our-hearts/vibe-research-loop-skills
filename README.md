@@ -14,7 +14,7 @@ Agent skills for the vibe-research-loop guide, the research workflow in which AI
 
 ## Installing
 
-Once per machine, clone this repository into your home directory, next to the guide:
+Once per machine, clone this repository into your home directory:
 
 ```bash
 git clone <repository URL> ~/vibe-research-loop-skills
@@ -37,7 +37,8 @@ A `git pull` in `~/vibe-research-loop-skills` updates every linked skill. Run th
 
 The agent also picks a research skill on its own when a request matches its description; `init-workspace` runs only when the user invokes it.
 
-- Run `init-workspace` first, once per machine; it reads the guide from `~/vibe-research-loop`. The research skills rely on the workspace's rules and on the Notion templates, whose gray instructions say what goes where.
+- Run `init-workspace` first, once per machine. It carries its own copy of the guide, so the guide never needs to be cloned. The research skills rely on the workspace's rules and on the Notion templates, whose gray instructions say what goes where.
+- The research skills use the English names of the Notion databases and properties, the ones `init-workspace` creates.
 - Start the agent from the workspace root; the research skills stop anywhere else.
 - The research skills keep the IDs of the Notion project page and databases in the workspace's `docs/notion/ids.md`.
 
@@ -50,3 +51,11 @@ The agent also picks a research skill on its own when a request matches its desc
 | `agents/openai.yaml` | Ignored | Display name, short description, default prompt, and invocation policy |
 
 Each agent ignores the other's settings, so one folder serves both.
+
+## Maintaining
+
+`skills/init-workspace/references/guide/` is a copy of the English guide's committed files. After the guide changes, replace the copy with the guide's latest commit, then commit it here with that commit's hash in the message:
+
+```bash
+rm -rf skills/init-workspace/references/guide && mkdir -p skills/init-workspace/references/guide && git -C <guide checkout> archive HEAD | tar -x -C skills/init-workspace/references/guide
+```
