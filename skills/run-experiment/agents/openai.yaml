@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run Experiment"
+  short_description: "Launch and monitor an approved experiment"
+  default_prompt: "Use $run-experiment to launch the approved experiment and report its progress."

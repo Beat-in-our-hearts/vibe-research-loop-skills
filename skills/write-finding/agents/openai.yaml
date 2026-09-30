@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write Finding"
+  short_description: "Draft a finding from finished experiments"
+  default_prompt: "Use $write-finding to draft the finding for this idea's experiments."

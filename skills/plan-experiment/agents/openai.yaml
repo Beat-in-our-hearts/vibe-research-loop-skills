@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan Experiment"
+  short_description: "Plan the next experiment of an approved idea"
+  default_prompt: "Use $plan-experiment to plan the next experiment for the top approved idea."

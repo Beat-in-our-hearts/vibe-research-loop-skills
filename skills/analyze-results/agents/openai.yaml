@@ -1,0 +1,4 @@
+interface:
+  display_name: "Analyze Results"
+  short_description: "Analyze the results of a finished experiment"
+  default_prompt: "Use $analyze-results to analyze the experiment that just finished."

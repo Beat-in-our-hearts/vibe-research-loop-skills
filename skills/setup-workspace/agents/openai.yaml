@@ -1,0 +1,6 @@
+interface:
+  display_name: "Set Up Workspace"
+  short_description: "Set up a research workspace or add a machine"
+  default_prompt: "Use $setup-workspace to set up this directory as a research workspace."
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Search Papers"
+  short_description: "Add curated papers to the Literature Library"
+  default_prompt: "Use $search-papers to run today's literature search."
