@@ -1,0 +1,6 @@
+interface:
+  display_name: "Init Workspace"
+  short_description: "Set up the workspace, Notion, and Google Drive"
+  default_prompt: "Use $init-workspace to set up this directory as a research workspace."
+policy:
+  allow_implicit_invocation: false

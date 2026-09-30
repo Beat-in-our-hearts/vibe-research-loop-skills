@@ -1,6 +1,0 @@
-interface:
-  display_name: "Set Up Google Drive"
-  short_description: "Keep datasets, runs, and logs on Google Drive"
-  default_prompt: "Use $setup-gdrive to keep this workspace's data and runs on Google Drive."
-policy:
-  allow_implicit_invocation: false

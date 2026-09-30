@@ -1,6 +1,0 @@
-interface:
-  display_name: "Set Up Notion"
-  short_description: "Set up the Notion research loop or connect a machine"
-  default_prompt: "Use $setup-notion to set up Notion for this research workspace."
-policy:
-  allow_implicit_invocation: false
