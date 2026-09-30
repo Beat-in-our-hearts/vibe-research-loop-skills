@@ -11,7 +11,7 @@ Build what [`overview.md`](overview.md) and [`databases.md`](databases.md) descr
 3. **Literature Library.** Search the Notion workspace for it. If there is none, create it at the top level with the admission rules and an inline Papers database; if there is one, reuse it, since every project shares it.
 4. **Project page.** Create a top-level page named after the project, with the Research Core, the loop diagram and its legend from [`research-loop.md`](research-loop.md), and the Knowledge Base holding the Ideas, Experiments, and Findings databases, each with the properties, relations, formula, and views in [`databases.md`](databases.md).
 5. **Templates.** Ask the user to create one empty template in each of the four databases in the Notion app (New ▾ → + New template), since the API cannot, and wait. Then fill each template from [`templates/`](templates/): the body below the line, and the default properties.
-6. **Human steps.** Ask the user to make each template the default of its database and to set their Notion time zone to Dubai, both in the Notion app.
+6. **Human steps.** Ask the user to make each template the default of its database and to set their Notion time zone to the project's, the `TZ` in the workspace's `.env`, both in the Notion app.
 7. **Check and report.** Read back every page, database, view, and template, and compare them with this guide. Report in a table what you created, what you reused, and what the user still has to do.
 
 ## Add a machine

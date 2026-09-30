@@ -25,13 +25,13 @@ A Notion relation can point to only one database, so Related is a text property 
 
 ## Time zone
 
-All dates and times in Notion are UAE time (Asia/Dubai, UTC+04:00).
+All dates and times in Notion use the project's time zone: the one chosen when its workspace is set up, kept as `TZ` in the workspace's `.env`.
 
 | Where | How |
 |---|---|
-| Date properties with a time | Agents set `time_zone` to `Asia/Dubai` |
-| Times in page text | Written as `YYYY-MM-DD HH:MM`, in UAE time |
-| Created and other automatic times | Each person sets their Notion time zone to Dubai |
+| Date properties with a time | Agents set `time_zone` to the project's time zone |
+| Times in page text | Written as `YYYY-MM-DD HH:MM`, in the project's time zone |
+| Created and other automatic times | Each person sets their Notion time zone to the project's |
 
 ## Ideas
 

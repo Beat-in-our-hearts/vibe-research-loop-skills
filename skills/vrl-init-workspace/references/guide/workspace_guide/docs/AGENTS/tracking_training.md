@@ -13,7 +13,7 @@
 
 ## Example
 
-**Plan `env-c-comparison` · 2026-09-30 14:05 +04:00**
+**Plan `env-c-comparison` · 2026-09-30 10:05 +00:00**
 
 | Item | Status | Details |
 |---|---|---|

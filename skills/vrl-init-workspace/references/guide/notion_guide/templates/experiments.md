@@ -58,7 +58,7 @@ Everything below the line is the template body exactly as it appears in Notion. 
 
 ## 4. Logs
 
-*Agent (during runs): update at every checkpoint or evaluation. Overwrite the status row; regenerate the training-loss and primary-validation-metric curves from metrics.csv, one line per run, and replace the old figures below; add an anomaly row for every incident (divergence, NaN, plateau, restart). If the ETA drifts more than 20% from Est. Hours, update Est. Hours. Write every time in UAE time (UTC+04:00).*
+*Agent (during runs): update at every checkpoint or evaluation. Overwrite the status row; regenerate the training-loss and primary-validation-metric curves from metrics.csv, one line per run, and replace the old figures below; add an anomaly row for every incident (divergence, NaN, plateau, restart). If the ETA drifts more than 20% from Est. Hours, update Est. Hours. Write every time in the project's time zone.*
 
 | Progress | Latest metrics | Updated |
 |---|---|---|

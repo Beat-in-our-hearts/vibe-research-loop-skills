@@ -14,6 +14,7 @@ The workspace is the directory you were launched from; `<guide>` is the root of 
    | Working language | English | Reasoning and planning, and every file you write, the rule files included |
    | Git level for `main_repo` | Manual commit | Whether you commit and push code on your own: manual commit, auto commit, or auto push |
    | Workspace remote | None | A private remote for the workspace repository, needed to share it with other machines |
+   | Time zone | UTC | Every time agents write, in logs, reports, and Notion; an IANA name of the form `Area/City` |
 
 2. **Workspace.** Create the folders in the tree of `<guide>/workspace_guide/docs/AGENTS/file_structure.md`, except those named with a `<placeholder>`. Make the workspace root a git repository on branch `main` with this `.gitignore`, and add the remote if the user gave one:
 
@@ -30,8 +31,8 @@ The workspace is the directory you were launched from; `<guide>` is the root of 
 
 3. **Rule files.** Write the workspace's `AGENTS.md`, `.env`, and `docs/AGENTS/` from the template in `<guide>/workspace_guide/`, and revise them yourself to fit step 1:
    - write them in the working language, translating the template where needed, and keep every file name and path unchanged;
-   - make `docs/AGENTS/language_rules.md` state the two languages, or the user's own rules, and `docs/AGENTS/git.md` the git level;
-   - in `.env`, replace `/path/to/workspace` with the workspace's absolute path;
+   - make `docs/AGENTS/language_rules.md` state the two languages, or the user's own rules, `docs/AGENTS/git.md` the git level, and `docs/AGENTS/environment.md` the time zone;
+   - in `.env`, replace `/path/to/workspace` with the workspace's absolute path and `Area/City` with the time zone;
    - keep the meaning of every other rule, one topic per file, and no file in `docs/AGENTS/` mentioning another;
    - keep `AGENTS.md` listing every file in `docs/AGENTS/`, each as an `@` import with the task that needs it.
 4. **This machine.** Probe the machine: `nvidia-smi`, the container's CPU and memory limits, the storage and its quota, the scheduler, and the network. Fill in `docs/AGENTS/machine.md` and ask the user to confirm it.
@@ -45,6 +46,6 @@ The workspace is the directory you were launched from; `<guide>` is the root of 
 Use this on another machine after the workspace repository has been cloned into the directory you were launched from; `<guide>` is the root of this repository.
 
 1. **Folders.** Create the folders of the tree that the clone lacks, except those named with a `<placeholder>`.
-2. **This machine.** Write this machine's `.env` from `<guide>/workspace_guide/.env` with the workspace's absolute path. Probe the machine as in step 4 of "Set up a workspace", fill in `docs/AGENTS/machine.md` from `<guide>/workspace_guide/docs/AGENTS/machine.md` in the working language, and ask the user to confirm it.
+2. **This machine.** Write this machine's `.env` from `<guide>/workspace_guide/.env` with the workspace's absolute path and the time zone in `docs/AGENTS/environment.md`. Probe the machine as in step 4 of "Set up a workspace", fill in `docs/AGENTS/machine.md` from `<guide>/workspace_guide/docs/AGENTS/machine.md` in the working language, and ask the user to confirm it.
 3. **Main repository.** Clone the project's code repository into `main_repo/`.
 4. **Check and report.** Do steps 6 and 8 of "Set up a workspace".

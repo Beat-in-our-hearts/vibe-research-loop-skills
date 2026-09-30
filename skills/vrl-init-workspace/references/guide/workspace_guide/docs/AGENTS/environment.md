@@ -5,7 +5,7 @@
 | Variable | Value | Why |
 |---|---|---|
 | `XDG_CACHE_HOME` | `<absolute path of the workspace>/.cache` | pip, uv, Hugging Face, torch, and most other tools keep their caches under it |
-| `TZ` | `Asia/Dubai` | Every machine writes times in UAE time, the same as Notion |
+| `TZ` | `Area/City` | Every machine writes times in this one time zone, the same as Notion |
 
 - Write every value as a literal: an absolute path or a plain value. Never build one from another variable (`export X=$X/...`, `HF_HOME=$XDG_CACHE_HOME/huggingface`) or from a relative path; both leave stray folders behind.
 - Load `.env` in every command you launch: `set -a; . <absolute path of the workspace>/.env; set +a`. Never rely on `.bashrc`: commands run through `tmux new-window '<cmd>'`, `ssh host '<cmd>'`, or a job scheduler may not read it.
