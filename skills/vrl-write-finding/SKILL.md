@@ -1,5 +1,5 @@
 ---
-name: write-finding
+name: vrl-write-finding
 description: Draft a finding from an idea's finished experiments in a vibe-research-loop workspace, with a claim no broader than its evidence and publication-style figures, tables, and analysis on the Findings page in Notion; once the user confirms it, close the idea and log any change of direction. Use when an idea's testing ends, or when the user asks to write up or close a result.
 ---
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "VRL Plan Experiment"
+  short_description: "Plan the next experiment of an approved idea"
+  default_prompt: "Use $vrl-plan-experiment to plan the next experiment for the top approved idea."

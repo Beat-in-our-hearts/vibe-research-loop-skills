@@ -1,5 +1,5 @@
 ---
-name: run-experiment
+name: vrl-run-experiment
 description: Launch and monitor the runs of an approved experiment in a vibe-research-loop workspace, keep its Notion page's logs, status, and progress current, report at the agreed interval, and close it with its outcome. Use when the user asks to start, resume, check on, or monitor an experiment's runs.
 ---
 
@@ -19,7 +19,7 @@ description: Launch and monitor the runs of an approved experiment in a vibe-res
    | Failed | The plan could not be completed: a crash, out of memory, or a divergence that could not be fixed |
    | Invalid | The comparison cannot be trusted: mismatched evaluation code or data, a bug, or a change to the plan without a new approval |
 
-   Go on with analyze-results for Done; for Failed or Invalid, give the user the reason and a proposal.
+   Go on with vrl-analyze-results for Done; for Failed or Invalid, give the user the reason and a proposal.
 
 ## Rules
 

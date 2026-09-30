@@ -1,4 +1,0 @@
-interface:
-  display_name: "Propose Idea"
-  short_description: "Write a testable research idea for approval"
-  default_prompt: "Use $propose-idea to turn this into a testable idea in Notion."

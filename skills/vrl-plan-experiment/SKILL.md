@@ -1,5 +1,5 @@
 ---
-name: plan-experiment
+name: vrl-plan-experiment
 description: Plan the next experiment of an approved idea in a vibe-research-loop workspace. Create its Experiments page in Notion and its plan file, prepare and smoke-test the code and configs, and ask the user to approve the plan. Use when the user asks to test an idea, design or plan an experiment, or pick up the next approved idea.
 ---
 

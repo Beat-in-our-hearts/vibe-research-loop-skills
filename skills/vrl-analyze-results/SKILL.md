@@ -1,5 +1,5 @@
 ---
-name: analyze-results
+name: vrl-analyze-results
 description: Analyze a finished experiment in a vibe-research-loop workspace. Compute its results from the metrics files, draw publication-style figures and tables, search for related work, fill the results and conclusion of its Notion page, update the idea's budget, and decide the next step. Use when an experiment's runs have finished.
 ---
 
@@ -8,10 +8,10 @@ description: Analyze a finished experiment in a vibe-research-loop workspace. Co
 1. **Check.** Read the Experiments page: Status must be Finish with Outcome Done. For Failed or Invalid, write only the reason in the checks table and Next step, and stop.
 2. **Numbers.** Compute every result from the final metrics files, never from logs or memory: mean ± std over seeds, and the difference from the baseline. Investigate a result that looks too good before you report it.
 3. **Figures.** Draw each figure with a script from the result files, and save it as PDF and PNG, with its script, under `runs/<date>-<name>/figures/`.
-4. **Literature.** Search for work that explains, supports, or contradicts the result, in the post-experiment mode of search-papers, and cite it as evidence.
+4. **Literature.** Search for work that explains, supports, or contradicts the result, in the post-experiment mode of vrl-search-papers, and cite it as evidence.
 5. **Page.** Fill sections 5 and 6: Table 1, the figures, one observation per row, and the checks, each ✔ or ✘ with the reason for every ✘. The code-review check passes only after the user has reviewed the code. In section 6, answer whether the success criteria were met, with the deciding numbers, and write the Reproduce command.
 6. **Budget.** Update Used in the idea's Budget.
-7. **Next.** If the success criteria were met, a Budget limit is reached, or several experiments in a row brought no improvement, stop iterating on the idea and draft its finding with write-finding. Otherwise propose the next experiment. Report Table 1, the figures, and the next step to the user.
+7. **Next.** If the success criteria were met, a Budget limit is reached, or several experiments in a row brought no improvement, stop iterating on the idea and draft its finding with vrl-write-finding. Otherwise propose the next experiment. Report Table 1, the figures, and the next step to the user.
 
 ## Rules
 

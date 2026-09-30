@@ -1,5 +1,5 @@
 ---
-name: propose-idea
+name: vrl-propose-idea
 description: Write a testable research hypothesis into the project's Ideas database in Notion, with its motivation, feasibility, planned test, and proposed budget, for the user to approve. Use in a vibe-research-loop workspace when the user wants to add, draft, or brainstorm research ideas, or when a finding or paper suggests one.
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: init-workspace
+name: vrl-init-workspace
 description: Initialize a vibe-research-loop workspace in the current directory, or add this machine to an existing one, by following the setup prompts of the bundled vibe-research-loop guide in order - the workspace itself, the Notion CLI and the project's Notion pages, and optionally Google Drive. Can also redo a single part.
 disable-model-invocation: true
 ---
