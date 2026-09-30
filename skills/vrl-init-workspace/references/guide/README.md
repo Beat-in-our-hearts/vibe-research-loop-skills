@@ -39,7 +39,7 @@ After setup:
 
 | Rule | Why |
 |---|---|
-| Start the agent from the workspace root, never from inside `main_repo/` | Codex reads AGENTS.md only from the git root down to the launch directory, and in workspace-write mode it writes only under the launch directory; Claude Code keeps its project config (`.claude/`) there too |
+| Start the agent from the workspace root, never from inside the code folder (`main_repo/` unless renamed at setup) | Codex reads AGENTS.md only from the git root down to the launch directory, and in workspace-write mode it writes only under the launch directory; Claude Code keeps its project config (`.claude/`) there too |
 | If `runs/` or `.cache/` is a symlink to another disk, add its real path to the agent's writable directories (`writable_roots` in Codex, `--add-dir` in Claude Code) | Otherwise the sandbox blocks writes there |
 | Let the agent reach the network for `git pull` and `git push` | Codex's workspace-write sandbox has no network by default: set `network_access = true` under `[sandbox_workspace_write]` in `~/.codex/config.toml`, or approve each request |
 | Let the agent read the guide in your home directory | Claude Code asks before reading outside its working directory: allow it, or start with `--add-dir ~/vibe-research-loop` |
