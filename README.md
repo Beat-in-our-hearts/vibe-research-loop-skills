@@ -37,10 +37,22 @@ A `git pull` in `~/vibe-research-loop-skills` updates every linked skill. Run th
 
 The agent also picks a research skill on its own when a request matches its description; `vrl-init-workspace` runs only when the user invokes it.
 
-- Run `vrl-init-workspace` first, once per machine. It carries its own copy of the guide, so the guide never needs to be cloned. The research skills rely on the workspace's rules and on the Notion templates, whose gray instructions say what goes where.
+- Run `vrl-init-workspace` first, once per machine. It carries its own copy of the guide, so the guide never needs to be cloned. The research skills rely on the workspace's rules and on the Notion templates, whose gray instructions say what goes where; once they fill a section, they delete its instructions from the page and keep only the content.
 - The research skills use the English names of the Notion databases and properties, the ones `vrl-init-workspace` creates.
 - Start the agent from the workspace root; the research skills stop anywhere else.
 - The research skills keep the IDs of the Notion project page and databases in the workspace's `docs/notion/ids.md`.
+
+## Remote mode
+
+When the machine you run the agent on has no GPU and jobs run on a remote host over SSH, such as an HPC container, choose remote mode in `vrl-init-workspace`. Its prompts live in [`skills/vrl-init-workspace/references/remote/`](skills/vrl-init-workspace/references/remote/), outside the bundled guide, so that refreshing the guide leaves them alone.
+
+| | Local machine: the launch directory | Remote host: the remote workspace |
+|---|---|---|
+| Files | `AGENTS.md`, `docs/AGENTS/` (with `remote.md`), and an SSHFS mount of the remote workspace | Everything else: `.env`, code, `docs/plans/`, `docs/notion/ids.md`, `logs/`, `runs/`, `tests/`, … |
+| Commands | File edits, `ssh`, `ntn`, web requests, git of the rules | Everything else, through one SSH master and a tmux session |
+| Git | The rules repository | The workspace repository |
+
+The research skills switch to it whenever `docs/AGENTS/remote.md` exists in the launch directory. Mount the remote workspace before starting a session there.
 
 ## Compatibility
 
