@@ -41,6 +41,7 @@ The agent also picks a research skill on its own when a request matches its desc
 - The research skills use the English names of the Notion databases and properties, the ones `vrl-init-workspace` creates.
 - Start the agent from the workspace root; the research skills stop anywhere else.
 - The research skills keep the IDs of the Notion project page and databases in the workspace's `docs/notion/ids.md`.
+- Review a Notion page by coloring its text: red for what you think is wrong, orange for what you did not understand, and purple for what you cannot accept. The research skills read these colors before every write and answer each mark.
 
 ## Remote mode
 
