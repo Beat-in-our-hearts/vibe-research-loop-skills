@@ -95,3 +95,7 @@ An agent can do all of this by following [`notion_prompts.md`](notion_prompts.md
 | 6. Research Core | Write your research question and its framing |
 
 For every further project, duplicate the project page: its inline databases, views, and templates come with it.
+
+## Reviewing a page
+
+A human reviews a page an agent wrote by coloring its text or its background: red for what they think is wrong, orange for what they did not understand, and purple for what they cannot accept. Before every write, the agent reads the colors of every rich-text item, table cells included: it fixes red, explains orange in plainer words and rewrites it so that it no longer needs the explanation, and proposes an alternative for purple and waits for the decision. Rewritten text loses its mark; a mark not yet resolved stays. Other colors carry no meaning.

@@ -10,11 +10,23 @@ Everything below the line is the template body exactly as it appears in Notion. 
 
 ---
 
-> Capture one idea so a human can judge its feasibility before anything is built; a human ticks Human Approved after the review. Start by setting a short, unique ID, e.g. `lr-warmup`, and write the hypothesis as the page title.
+> Capture one idea so a human can judge its feasibility before anything is built; a human ticks Human Approved after the review. Set a short, unique ID, e.g. `lr-warmup`, write the hypothesis as the page title, and write the line of thought before anything else: every section below follows from it.
+
+<aside>
+💡 **Line of thought**
+
+*Agent (on creation): five steps of reasoning, in plain words and in this order, written before the sections. Goal: what this idea is for. Observations: what was seen, with its numbers and sources, that prompted it. Hypothesis: the guess, and why it would explain the observations. Test: the smallest test that can tell, and how it grows if the first results are promising. Decision: what result supports or rejects the guess, and what comes next either way.*
+
+- **Goal:** *…*
+- **Observations:** *…*
+- **Hypothesis:** *…*
+- **Test:** *…*
+- **Decision:** *…*
+</aside>
 
 ## 1. Motivation
 
-*Agent (on creation): one row per source, with the result or gap it reveals. Take sources from the Findings database or the Literature Library, and @mention them in the Related property.*
+*Agent (on creation): the evidence behind the line of thought, one row per source, in its order. Take sources from the Findings database, the Literature Library, earlier experiments, or the user's own words, and @mention the Notion pages among them in the Related property. In What it shows, give the fact with its numbers, then → what it means for the hypothesis. When a source compares several settings, put them in a small table below with a bold caption, e.g. **Table 1.**, rather than in one long cell.*
 
 | Source | What it shows |
 |---|---|
@@ -22,7 +34,7 @@ Everything below the line is the template body exactly as it appears in Notion. 
 
 ## 2. Feasibility analysis
 
-*Agent (on creation): explain why the hypothesis could hold: one row per key assumption, with why we believe it and what would break it. Formalize where you can, for example a formula for the mechanism, an estimate of the effect size, or a derivation of the expected result, placed below the table; where you cannot, plain reasoning is enough.*
+*Agent (on creation): one row per key assumption, with why we believe it and what would break it. Below the table, explain the mechanism in plain words; add a formula only after the words, and only if it makes the argument sharper.*
 
 | Assumption | Why we believe it | What would break it |
 |---|---|---|
@@ -30,20 +42,38 @@ Everything below the line is the template body exactly as it appears in Notion. 
 
 ## 3. Planned test
 
-*Agent (on creation): the plan a human approves; experiments must follow it or record their deviations. Success criteria is the pass/fail threshold and must be written before anything runs, e.g. "+1% over the baseline, mean of 3 seeds".*
+*Agent (on creation): the plan a human approves; experiments must follow it or record their deviations. Use exactly the settings the user named, such as the model, its size, and the data; check them against measured sources, and ask before changing one. Baseline says what is reused and what is rerun. Success criteria is the pass/fail threshold and must be written before anything runs, e.g. "+1% over the baseline, mean of 3 seeds"; define every metric in one plain sentence where it first appears, with the values a healthy run and a failed run show when they are known.*
 
 | Item | Plan |
 |---|---|
 | Baseline | *…* |
-| Single change | *…* |
+| Change from the baseline | *…* |
 | Success criteria | *…* |
+
+**Groups.** *Agent (on creation): every group the test compares, the baseline and any control included: what it changes, whether it needs training, how it is evaluated, and its seeds. Below the table, say why each control is there.*
+
+| Group | Setting | Training | Evaluation | Seeds |
+|---|---|---|---|---|
+| *…* | *…* | *…* | *…* | *…* |
+
+**Stages.** *Agent (on creation): start with the smallest stage that can show whether the idea is promising; each later stage runs only when its condition holds, and needs a new approval.*
+
+| Stage | Groups and seeds | Go on when |
+|---|---|---|
+| *…* | *…* | *…* |
 
 ## 4. Budget
 
-*Agent (on creation) proposes limits from the expected compute; Human (review) sets them. Agent (after runs): update Used after every experiment. Once any limit is reached, the success criteria are met, or several experiments in a row bring no improvement, stop iterating on this idea, draft the corresponding finding, and report to a human.*
+*Agent (on creation) proposes limits from the estimate below; Human (review) sets them. Agent (after runs): update Used after every experiment. Once any limit is reached, the success criteria are met, or several experiments in a row bring no improvement, stop iterating on this idea, draft the corresponding finding, and report to a human.*
 
 | Item | Limit | Used |
 |---|---|---|
 | Experiments | *…* | *0* |
 | Compute | *…* | *0* |
 | Deadline | *…* | *—* |
+
+**Estimate.** *Agent (on creation): one row per piece of work, setup, smoke runs, and re-evaluations included. Base each estimate on a measured number, such as a log or an earlier report, scaled to the current machine described in `docs/AGENTS/machine.md`; name what limits its speed, such as the GPU, CPU data loading, or the simulator, and say whether it is measured or estimated. End with the total task time and the wall-clock time on this machine. When nothing comparable was measured, plan a short timing run and re-estimate after it.*
+
+| Item | Basis | Estimate |
+|---|---|---|
+| *…* | *…* | *…* |
