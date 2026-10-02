@@ -50,7 +50,7 @@ Review a page the agent wrote by coloring its text, either the text itself or it
 |---|---|---|
 | 🔴 Red | This is wrong | Fixes it, and says what it changed and why |
 | 🟠 Orange | I did not understand this | Explains it in plainer words, and rewrites it so that it no longer needs the explanation |
-| 🟣 Purple | I cannot accept this | Proposes an alternative, and waits for your decision |
+| 🟣 Purple | I cannot accept this | Proposes an alternative, and leaves the text and its mark until you decide |
 
 Rewritten text loses its mark; a mark the agent has not resolved stays in place. Other colors carry no meaning, such as the blue background of an idea's line of thought.
 

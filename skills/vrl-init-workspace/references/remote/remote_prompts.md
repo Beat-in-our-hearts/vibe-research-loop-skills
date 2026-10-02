@@ -62,7 +62,7 @@ Follow "Set up a workspace" in `<guide>/workspace_guide/workspace_prompts.md`, w
 Use this with "Set up Notion" and "Set up Google Drive" of the guide, or their "Add a machine" sections, on a remote-mode machine.
 
 - **Notion.** `ntn` runs on the local machine. If that machine has no OS keychain, as on a headless server, `ntn login` cannot store its token and `ntn` then fails with a keychain error: ask the user to export `NOTION_KEYRING=0` in their shell profile and to log in again with `NOTION_KEYRING=0 ntn login`, and run `ntn` with it from then on. Record this under Notion in `docs/AGENTS/remote.md`.
-- **Google Drive.** rclone runs on the remote host, which has no browser. Ask the user to run `rclone config` themselves in the remote tmux session, answer no to the web-browser question, run the `rclone authorize` command it prints on a machine with a browser, and paste the result back there. If the user gives the Drive folder as a link, set the remote's `root_folder_id` to the folder's ID with `rclone config update <remote> root_folder_id <ID>`, and use `<remote>:` as the workspace's folder in `docs/AGENTS/drive.md`.
+- **Google Drive.** rclone runs on the remote host, which has no browser. Ask the user to run `rclone config` themselves in the remote tmux session, answer no to the web-browser question, run the `rclone authorize` command it prints on a machine with a browser, and paste the token that command prints into the waiting `rclone config` prompt on the remote host. If the user gives the Drive folder as a link, set the remote's `root_folder_id` to the folder's ID with `rclone config update <remote> root_folder_id <ID>`, and use `<remote>:` as the workspace's folder in `docs/AGENTS/drive.md`.
 
 ## Add a remote machine
 

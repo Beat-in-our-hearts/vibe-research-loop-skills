@@ -18,7 +18,7 @@ Every entry has an ID: a short abbreviation that a human can read at a glance. I
 | From | Property | To | How |
 |---|---|---|---|
 | Experiments | Idea | Ideas | One-way relation: the idea under test |
-| Ideas | Related | Findings, Papers | Text holding @mentions of the finding and paper pages the idea comes from |
+| Ideas | Related | Findings, Papers, Experiments | Text holding @mentions of the finding, paper, and earlier experiment pages the idea comes from |
 | Findings | Related | Ideas, Experiments | Text holding @mentions of the idea and experiment pages behind the claim |
 
 A Notion relation can point to only one database, so Related is a text property holding @mentions: one column can reference several databases, every mentioned page gets a backlink, and the Literature Library needs no property of its own.
@@ -45,7 +45,7 @@ Testable hypotheses derived from the research core. A human must tick Human Appr
 | Outcome | select | Supported · Rejected | The second level of Finish, set together with it |
 | Human Approved | checkbox | | Feasibility reviewed by a human; agents implement only approved ideas. It stays checked even if findings later reject the idea |
 | Priority | select | High · Medium · Low | The order in which agents pick up approved ideas |
-| Related | text | @mentions of finding and paper pages | The findings and papers the idea comes from |
+| Related | text | @mentions of finding, paper, and experiment pages | The findings, papers, and earlier experiments the idea comes from |
 | Created | created time | | When the idea was written down; set by Notion |
 
 | Status | Outcome | Set when | Set by |

@@ -6,7 +6,7 @@
 | Template | Create an empty template in the database in the Notion app (New ▾ → + New template), then fill its body with the content below |
 | Default properties | Status = Backlog · Human Approved = unchecked |
 
-Everything below the line is the template body exactly as it appears in Notion. Text in *italics* is gray in Notion: those lines are instructions. Each starts with who acts and when — Agent (on creation), Agent (during runs), Agent (after runs), Agent (after review), or Human (review) — and says where the content comes from. This file is the source of truth; the rules for syncing it to Notion are in [`../operations.md`](../operations.md).
+Everything below the line is the template body exactly as it appears in Notion. Text in *italics* is gray in Notion: those lines are instructions. The `<aside>` block is a callout with the 💡 icon and a blue background. Each starts with who acts and when — Agent (on creation), Agent (during runs), Agent (after runs), Agent (after review), or Human (review) — and says where the content comes from. This file is the source of truth; the rules for syncing it to Notion are in [`../operations.md`](../operations.md).
 
 ---
 
@@ -56,7 +56,7 @@ Everything below the line is the template body exactly as it appears in Notion. 
 |---|---|---|---|---|
 | *…* | *…* | *…* | *…* | *…* |
 
-**Stages.** *Agent (on creation): start with the smallest stage that can show whether the idea is promising; each later stage runs only when its condition holds, and needs a new approval.*
+**Stages.** *Agent (on creation): start with the smallest stage that can show whether the idea is promising; each later stage runs only when its condition holds, as a new experiment that the user approves as usual.*
 
 | Stage | Groups and seeds | Go on when |
 |---|---|---|
