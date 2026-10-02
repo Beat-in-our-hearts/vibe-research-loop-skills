@@ -75,7 +75,7 @@ One row per experiment: a controlled comparison of baseline, treatment, and abla
 | Human Approved | checkbox | | A human approved the plan in sections 1–3 of the page; agents start runs only after that |
 | Progress | formula | text bar, e.g. `███████░░░ 70%` | Elapsed time / Est. Hours, capped at 100%; Finish shows 100%, or `stopped` if the outcome is Failed or Invalid |
 | Started | date and time | | Start of the first run, set by the agent when it launches that run |
-| Est. Hours | number | | Estimated total wall-clock hours from measured step time × total steps; updated when the ETA drifts |
+| Est. Hours | number | | Estimated wall-clock hours from the first run to the end of the plan, from the step times measured in the smoke run and the planned concurrency (the Time estimate in section 2); updated when the ETA drifts |
 | Created | created time | | When the experiment was planned; also `<date>` in the output folder `runs/<date>-<name>/` |
 
 | Status | Outcome | Set when | Set by |

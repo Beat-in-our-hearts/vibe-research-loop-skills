@@ -1,17 +1,32 @@
 ---
 name: vrl-plan-experiment
-description: Plan the next experiment of an approved idea in a vibe-research-loop workspace. Create its Experiments page in Notion and its plan file, prepare and smoke-test the code and configs, and ask the user to approve the plan. Use when the user asks to test an idea, design or plan an experiment, or pick up the next approved idea.
+description: Plan the next experiment of an approved idea in a vibe-research-loop workspace. Create its Experiments page in Notion - every run, a time estimate from measured numbers on the current machine, and a detail plan whose steps each have a condition to go on and a list of writes - and its plan file, prepare and smoke-test the code and configs, and ask the user to approve the plan. Use when the user asks to test an idea, design or plan an experiment, or pick up the next approved idea.
 ---
 
 # Plan an experiment
 
-An experiment is one controlled comparison: a baseline, a treatment that changes exactly one thing, and ablations when needed. Nothing runs until the user approves its plan.
+An experiment is one controlled comparison: a baseline, a treatment that changes exactly one thing, and ablations when needed. Write its plan so that a reviewer can follow it without this conversation: every run, every number with its source, and every choice with its reason. Nothing runs until the user approves its plan.
 
 1. **Idea.** Take the idea the user names, or else query Ideas for the approved ideas still in Backlog and take the one with the highest Priority. Go on only if its Human Approved is checked and its Budget has room; otherwise tell the user and stop. Read its Planned test, its Budget, and its earlier experiments. Plan only the earliest stage in its Stages table that has not run yet, and only once the condition of the stage before it holds.
-2. **Page.** Create the page in Experiments with Name (the experiment in a few words), ID (lowercase English words joined by hyphens, at most 24 characters, unique in Experiments, never renamed), and Idea. Leave Status at Planned and Human Approved unchecked. If the idea's Status is Backlog, set it to Testing.
-3. **Code.** Implement the change and one config per run, following the workspace's git rules on branches and worktrees. Check them with a short smoke run, logged in `logs/`, and set Est. Hours from the measured step time × the total steps.
-4. **Plan.** Write `docs/plans/<date>-<name>.md`, where `<date>` is the page's Created date and `<name>` its ID: the question, the design, the run table, the configuration, and the exact launch command of each run. Fill sections 1–3 of the page to match it.
-5. **Report.** Show the user the page link, the question, the runs with their machines, the estimated compute next to the idea's Estimate table, and every deviation from the idea's Planned test. Ask them to review sections 1–3 and tick Human Approved; launch nothing before they do.
+2. **Facts.** Before designing anything, settle every fact the plan rests on, read-only:
+   - Take every number from a source you can point to, such as a log, a report, or a results file, with the hardware it was measured on; estimate only what nobody has measured, and say that it is an estimate.
+   - Read the current machine in `docs/AGENTS/machine.md`, and check what the plan needs: code, environments, checkpoints, and data. Count what is missing or must be rebuilt as setup work.
+   - Read the code the plan builds on: what each hyperparameter you will list does, and which inputs and targets each component takes from a sample. Never infer them from a name.
+3. **Page.** Create the page in Experiments with Name (the experiment in a few words), ID (lowercase English words joined by hyphens, at most 24 characters, unique in Experiments, never renamed), and Idea. Leave Status at Planned and Human Approved unchecked. If the idea's Status is Backlog, set it to Testing.
+4. **Draft.** Fill sections 1–3 by the template's instructions, in the language the workspace's language rules set for Notion pages, or in the working language if they set none, with planned values where no config exists yet:
+   - Runs: every run, evaluation-only checks included, with what it trains, how it is evaluated, and what it shows; why each control is there; and each design choice with its reason and the alternative you considered.
+   - Deviations: every difference from the idea's Planned test, each with its reason; the success criteria are copied verbatim.
+   - Time estimate: every piece of work, from measured numbers scaled to the current machine, counting what the treatment adds over the baseline, re-evaluations, and environments to rebuild.
+   - Detail plan: the steps in order, each with its output, its condition to go on, its time, and every write it makes.
+5. **Setup.** Do the setup steps of the Detail plan in order: the code and one config per run, following the workspace's git rules on branches and worktrees, then the environments and data, and last a short smoke run of each config, logged in `logs/`. In remote mode, first show the user the page link and the writes that these steps and the plan file make on the remote host, and make only the writes they approve. If a step's condition to go on fails, stop and report.
+6. **Update.** Replace the planned values in section 3 from the config snapshots. Re-estimate the time from the smoke run's measured step times and the bottleneck it shows, and set Est. Hours to the new wall-clock from the first run to the end of the plan. Write `docs/plans/<date>-<name>.md`, where `<date>` is the page's Created date and `<name>` its ID: the question, the design, the runs, the Detail plan, the configuration, and the exact launch command of each run, consistent with sections 1–3.
+7. **Self-review.** Read the page back as the user would, and revise it until every answer is yes:
+   - Can a reader tell how many runs there are, what each one does, and why each is there?
+   - Is every term, hyperparameter, and number explained in plain words, and every number traced to its source?
+   - Does the time estimate fit the current machine, show its basis, and separate measured from estimated numbers?
+   - Does every deviation carry a reason, and are the success criteria copied unchanged?
+   - Does every step of the Detail plan have a condition to go on and list its writes?
+8. **Report.** Show the user the page link, the question, the runs with their machines, the time estimate before and after the smoke run next to the idea's Estimate table and the room left in its Budget, every deviation with its reason, and the writes of the steps after approval, which ticking Human Approved also approves. Ask them to review sections 1–3, by coloring its text as the rules below describe or in words, and to tick Human Approved; launch nothing before they do.
 
 ## Rules
 
