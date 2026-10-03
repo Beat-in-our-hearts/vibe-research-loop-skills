@@ -46,6 +46,10 @@ Everything below the line is the template body exactly as it appears in Notion. 
 |---|---|---|
 | *…* | *…* | *…* |
 
+**Data flow and losses.** *Agent (on creation): trace one training batch through the code, from the data loader to the total loss, for every model that differs, such as the baseline and a model with an extra branch; read it from the code, never from config names. First a code block with the tensor shape after every step that changes it, with the meaning of each axis (batch, time, camera, channel, height, width), where each component reads its input, and where gradients stop. Then one line per loss term: its formula, its weight, what it is averaged over and masked by, and how the terms add up to the total loss, including any per-sample weights, regularizers, and gradient clipping that differs between runs.*
+
+*…*
+
 **Time estimate.** *Agent (on creation): start with the current machine from `docs/AGENTS/machine.md`: its GPUs, CPU cores, and memory. Then one row per piece of work in the Detail plan: setup, such as writing the code, building or rebuilding an environment, and converting data; the smoke run; each run's training and evaluation, re-evaluating a reused baseline in a new environment included; and any diagnostics. In Basis, give the measured number, its source, and the hardware it was measured on, then how it scales to this machine, adding what the treatment costs beyond the baseline, such as extra data loading or compute per sample; mark each number measured or estimated, and name what limits the speed, such as the GPU, CPU data loading or video decoding, or the simulator. End with the total task hours, and the wall-clock hours with the planned concurrency, e.g. three runs sharing one GPU. After the smoke run, re-estimate from its measured step times and say what changed; a human confirms the new estimate when approving the plan. Set Est. Hours to the wall-clock hours from the first run to the end of the plan.*
 
 | Item | Basis | Estimate |

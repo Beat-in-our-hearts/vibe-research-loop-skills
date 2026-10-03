@@ -12,10 +12,12 @@ An experiment is one controlled comparison: a baseline, a treatment that changes
    - Take every number from a source you can point to, such as a log, a report, or a results file, with the hardware it was measured on; estimate only what nobody has measured, and say that it is an estimate.
    - Read the current machine in `docs/AGENTS/machine.md`, and check what the plan needs: code, environments, checkpoints, and data. Count what is missing or must be rebuilt as setup work.
    - Read the code the plan builds on: what each hyperparameter you will list does, and which inputs and targets each component takes from a sample. Never infer them from a name.
+   - Trace one training batch through the code, from the data loader to the total loss: the tensor shape after every step that changes it, where each component reads its input, where gradients stop, and every loss term with its formula, weight, averaging, and masking.
 3. **Page.** Create the page in Experiments with Name (the experiment in a few words), ID (lowercase English words joined by hyphens, at most 24 characters, unique in Experiments, never renamed), and Idea. Leave Status at Planned and Human Approved unchecked. If the idea's Status is Backlog, set it to Testing.
 4. **Draft.** Fill sections 1–3 by the template's instructions, in the language the workspace's language rules set for Notion pages, or in the working language if they set none, with planned values where no config exists yet:
    - Runs: every run, evaluation-only checks included, with what it trains, how it is evaluated, and what it shows; why each control is there; and each design choice with its reason and the alternative you considered.
    - Deviations: every difference from the idea's Planned test, each with its reason; the success criteria are copied verbatim.
+   - Data flow and losses: the traced batch, as a shape diagram and one line per loss term, for every model that differs, so that a reviewer can check what the code computes without reading it.
    - Time estimate: every piece of work, from measured numbers scaled to the current machine, counting what the treatment adds over the baseline, re-evaluations, and environments to rebuild.
    - Detail plan: the steps in order, each with its output, its condition to go on, its time, and every write it makes.
 5. **Setup.** Do the setup steps of the Detail plan in order: the code and one config per run, following the workspace's git rules on branches and worktrees, then the environments and data, and last a short smoke run of each config, logged in `logs/`. In remote mode, first show the user the page link and the writes that these steps and the plan file make on the remote host, and make only the writes they approve. If a step's condition to go on fails, stop and report.
@@ -23,6 +25,7 @@ An experiment is one controlled comparison: a baseline, a treatment that changes
 7. **Self-review.** Read the page back as the user would, and revise it until every answer is yes:
    - Can a reader tell how many runs there are, what each one does, and why each is there?
    - Is every term, hyperparameter, and number explained in plain words, and every number traced to its source?
+   - Can a reader follow one batch from the data to the total loss: every shape, where gradients stop, and every loss term with its weight?
    - Does the time estimate fit the current machine, show its basis, and separate measured from estimated numbers?
    - Does every deviation carry a reason, and are the success criteria copied unchanged?
    - Does every step of the Detail plan have a condition to go on and list its writes?
