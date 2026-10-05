@@ -12,6 +12,48 @@ Agent skills for the vibe-research-loop guide, the research workflow in which AI
 | [`vrl-write-finding`](skills/vrl-write-finding/SKILL.md) | Drafts a finding for the user to confirm, then closes the idea | The user or the agent |
 | [`vrl-search-papers`](skills/vrl-search-papers/SKILL.md) | Adds at most three papers per search to the Literature Library | The user or the agent |
 
+## Workflow
+
+```mermaid
+flowchart TD
+    INIT["vrl-init-workspace<br/>workspace, Notion, CLIs"]
+    PAPERS["vrl-search-papers<br/>Literature Library"]
+    IDEA["vrl-propose-idea<br/>Idea: Backlog"]
+    G1{{"You approve the idea<br/>and set its Budget limits"}}
+    PLAN["vrl-plan-experiment<br/>plan, setup, smoke run<br/>Idea: Testing<br/>Experiment: Planned"]
+    G2{{"You approve the plan"}}
+    RUN["vrl-run-experiment<br/>launch, monitor, report<br/>Experiment: Running, then Finish"]
+    OUT{"Outcome"}
+    FAIL["Reason and a proposal"]
+    ANALYZE["vrl-analyze-results<br/>Table 1, figures, budget"]
+    NEXT{"Stop iterating?"}
+    FIND["vrl-write-finding<br/>Finding: Under Review"]
+    G3{{"You confirm the finding"}}
+    CLOSE["Idea closed<br/>Supported, Rejected, or Parked"]
+
+    INIT --> IDEA
+    PAPERS -.->|inspire| IDEA
+    IDEA --> G1 --> PLAN --> G2 --> RUN --> OUT
+    OUT -->|Done| ANALYZE
+    OUT -->|Failed or Invalid| FAIL
+    FAIL -.->|you decide| PLAN
+    ANALYZE --> NEXT
+    NEXT -->|no: next experiment| PLAN
+    NEXT -->|yes| FIND --> G3 --> CLOSE
+    CLOSE -.->|new ideas| IDEA
+
+    classDef ai fill:#E3F4E1,stroke:#4E9A48,color:#15330F
+    classDef human fill:#ECE8FB,stroke:#7B6BC9,color:#221A4A
+    classDef lib fill:#FFF4D6,stroke:#C9A227,color:#3D2F0A
+    classDef check fill:#F4F4F4,stroke:#8A8A8A,color:#222222
+    class INIT,IDEA,PLAN,RUN,ANALYZE,FIND,FAIL,CLOSE ai
+    class G1,G2,G3 human
+    class PAPERS lib
+    class OUT,NEXT check
+```
+
+Green steps are what the agent does, each with the Notion status it leaves behind. Purple steps wait for you: nothing past them runs until you act. The agent stops iterating on an idea when the success criteria are met, a Budget limit is reached, or several experiments in a row bring no improvement. Dashed arrows are the loops back: papers and closed ideas inspire new ideas, and a failed or invalid run goes back to planning once you decide how. vrl-search-papers also runs daily and after each experiment, to look for related work.
+
 ## Install in one prompt
 
 Paste this into Claude Code or Codex, and approve the command when the agent asks: it needs the network and writes to `~/.agents` and `~/.claude`, outside the project.
