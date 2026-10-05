@@ -39,7 +39,7 @@ Testable hypotheses derived from the research core. A human must tick Human Appr
 
 | Property | Type | Values | Meaning |
 |---|---|---|---|
-| Name | title | | The hypothesis itself, stated so that it can be falsified |
+| Name | title | | The hypothesis in short, at most 15 words, or 20 characters in Chinese; the line of thought states it in full, so that it can be falsified |
 | ID | text | e.g. `lr-warmup` | Short, readable handle |
 | Status | status | Backlog (to-do) · Testing (in progress) · Finish · Parked (complete) | Lifecycle, independent of approval |
 | Outcome | select | Supported · Rejected | The second level of Finish, set together with it |
@@ -67,7 +67,7 @@ One row per experiment: a controlled comparison of baseline, treatment, and abla
 
 | Property | Type | Values | Meaning |
 |---|---|---|---|
-| Name | title | | The experiment in a few words |
+| Name | title | | The experiment in a few words, at most 15 words, or 20 characters in Chinese |
 | ID | text | e.g. `lr-warmup-ablation` | Short, readable handle; also `<name>` in the output folder `runs/<date>-<name>/` |
 | Idea | relation, one-way | → Ideas | The idea under test |
 | Status | status | Planned (to-do) · Running (in progress) · Finish (complete) | |
@@ -112,7 +112,7 @@ Verified conclusions. AI drafts them; a human confirms before they count as know
 
 | Property | Type | Values | Meaning |
 |---|---|---|---|
-| Name | title | | The claim, no broader than the evidence |
+| Name | title | | The claim in short, no broader than the evidence, at most 15 words, or 20 characters in Chinese; the one-sentence conclusion states it in full |
 | ID | text | e.g. `warmup-gain` | Short, readable handle |
 | Status | status | Under Review (to-do) · Confirmed · Overturned (complete) | A new finding starts Under Review; only a human sets Confirmed or Overturned |
 | Related | text | @mentions of idea and experiment pages | The idea it resolves and the experiments behind it |

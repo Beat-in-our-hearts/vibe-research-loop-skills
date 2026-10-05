@@ -1,6 +1,6 @@
 ---
 name: vrl-propose-idea
-description: Write a testable research hypothesis into the project's Ideas database in Notion, for the user to approve - its line of thought, motivation, feasibility, a planned test listing every group and stage, and a budget estimated from measured numbers on the current machine. Use in a vibe-research-loop workspace when the user wants to add, draft, or brainstorm research ideas, or when a finding or paper suggests one.
+description: Write a testable research hypothesis into the project's Ideas database in Notion, for the user to approve - its line of thought, motivation, feasibility, a planned test listing every group, and a budget giving the single-GPU and multi-GPU time on the current machine. Use in a vibe-research-loop workspace when the user wants to add, draft, or brainstorm research ideas, or when a finding or paper suggests one.
 ---
 
 # Propose an idea
@@ -11,26 +11,25 @@ An idea is one falsifiable hypothesis, written down so the user can judge its fe
 2. **Facts.** Before writing, settle every fact the plan rests on, read-only:
    - Use exactly the settings the user named: model and size, data, scale. If you have to infer one, say so and confirm it with the user.
    - Take every number from a source you can point to: a report, log, results file, or paper. Where a number was measured, quote the measurement; estimate only what nobody has measured, and say it is an estimate.
-   - Read the current machine in `docs/AGENTS/machine.md`, and check that the code, environment, checkpoints, and data the test needs exist. Count what is missing as setup work.
+   - Read the current machine's GPUs in `docs/AGENTS/machine.md`, for the budget. Leave checking the code, environment, checkpoints, and data to the experiment's plan.
 3. **Line of thought.** Before writing any section, draft its five steps in plain words: Goal (what you want), Observations (what you saw), Hypothesis (what you guess), Test (how you would check it), and Decision (what you would do with each outcome). Every section must follow from them; where one does not, change the section or the line of thought.
 4. **Page.** Create one page per idea in Ideas, and leave Status at Backlog and Human Approved unchecked:
 
    | Property | Value |
    |---|---|
-   | Name | The hypothesis, stated so it can be falsified |
+   | Name | The hypothesis in short, at most 15 words, or 20 characters in Chinese; state it in full, so it can be falsified, in the line of thought |
    | ID | Lowercase English words joined by hyphens, at most 24 characters, unique in Ideas (add `-2`, `-3` if taken); never renamed |
    | Priority | Your proposal: High, Medium, or Low |
    | Related | @mentions of the finding, paper, and experiment pages it comes from |
 
 5. **Body.** Fill the line of thought and sections 1–4 by the template's instructions, in the language the workspace's language rules set for Notion pages, or in the working language if they set none:
    - Groups: every group, the baseline and any control included, with what it changes, whether it trains, how it is evaluated, and its seeds; say why each control is there.
-   - Stages: begin with the smallest test that can show whether the idea is promising, with its condition for going on; a later stage runs only when that condition holds, as a new experiment the user approves as usual.
    - Success criteria: pass/fail thresholds fixed before anything runs, with every metric defined in one plain sentence where it first appears.
-   - Budget: estimate every piece of work, setup and re-evaluations included, from measured numbers scaled to the current machine; name what limits its speed, mark what is measured and what is estimated, and give the total task time and the wall-clock time. The limits are only your proposal.
+   - Budget: one sentence with the time the planned test takes on a single GPU and on the current machine's GPUs, and what it is based on: a measured number in a few words, or that it is a guess. The limits are only your proposal.
 6. **Self-review.** Read the page back as the user would, and revise it until every answer is yes:
    - Can a reader tell how many groups run, what each one changes, and why each is there?
    - Is every term and metric explained in plain words, and every number traced to its source?
-   - Does the budget show its arithmetic, separate measured from estimated numbers, and fit the current machine?
+   - Does the budget's estimate give the time on a single GPU and on the current machine, with its basis?
    - Does each section follow from the line of thought, with no step missing?
    - Are the settings the user named used unchanged?
 7. **Report.** Show the user one table with each idea's page link, hypothesis, groups, success criteria, and proposed budget, then the facts you could not settle. Ask them to review the page (by coloring its text as the rules below describe, or in words), set the Budget limits, and tick Human Approved; build nothing before they do.
@@ -43,6 +42,8 @@ An idea is one falsifiable hypothesis, written down so the user can judge its fe
 - Take the IDs of the project page and the databases from `docs/notion/ids.md`. If it is missing, find them with `ntn api v1/search` by exact title, reading every page of results; ask the user which project if several match, and record the IDs there in a table with the columns Object, Title in Notion, Page ID, Database ID, and Data source ID.
 - Create a page with `"template": {"type": "default", "timezone": "<TZ>"}`, where `<TZ>` is the `TZ` in the workspace's `.env`. It comes back blank while Notion applies the template: wait until the template's blocks appear.
 - Fill each section by its gray instructions; once it is filled, delete its gray instruction lines and any `…` placeholder left in it. Delete the template's opening quote when you first fill the page. A section that a later step fills keeps its instructions and placeholders until that step fills it. To see the instructions of a cleaned section, read the database's template: `ntn api v1/data_sources/<data source ID>/templates`, then that template page's blocks.
+- Write every page in sentences a colleague can follow without decoding. Common abbreviations such as w/, w/o, ckpt, bs, lr, approx., or SR are fine on their own, but never string abbreviations and symbols together with no words between them; spell an abbreviation out the first time only when it is uncommon in the field or made up for this project.
+- Keep each table cell short: a value, a phrase, or one sentence. When a cell holds several points, put each on its own line within the cell (a `\n` in its rich text, since a cell cannot hold list blocks), starting with `1.`, `2.` when their order matters and `•` otherwise. When a cell would run past three lines, move its content into a list right below the table and leave a short pointer in the cell.
 - Read a page before every write and read it back after; merge the user's edits instead of overwriting them.
 - The user reviews a page by coloring its text or the text's background: red marks what they think is wrong, orange what they did not understand, purple what they cannot accept; other colors are not marks. Before every write to a page, read the colors of all its text, table cells included (`annotations.color` of each rich-text item, and the block's `color`), and answer each mark, telling the user what you change and why: fix red text; explain orange text in plainer words and rewrite it so that it no longer needs the explanation; for purple text, propose an alternative and leave the text and its mark in place until the user decides. Write rewritten text without the mark, and leave every mark you have not resolved in place.
 - Add a figure by uploading its PNG with `ntn files create --filename <name>.png --content-type image/png < <file>`, then inserting it as an image block right above its caption.

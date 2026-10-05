@@ -129,7 +129,7 @@ Everything below the line is the template body exactly as it appears in Notion. 
 
 ## 6. Conclusion
 
-*Agent (after runs), then Human (review): answer whether the success criteria were met with yes or no and the deciding numbers; if they were, draft a finding page that @mentions this experiment in its Related property. Update Used in the idea's Budget, and stop once a limit or a stop condition is reached. For reproduction, write one command that reruns the whole comparison from a clean checkout.*
+*Agent (after runs), then Human (review): answer whether the success criteria were met with yes or no and the deciding numbers; if they were, draft a finding page that @mentions this experiment in its Related property. Check the idea's Budget limits, and stop once a limit or a stop condition is reached. For reproduction, write one command that reruns the whole comparison from a clean checkout.*
 
 | Item | Content |
 |---|---|

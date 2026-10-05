@@ -53,7 +53,7 @@ flowchart TD
     RUN["vrl-run-experiment<br/>launch, monitor, report<br/>Experiment: Running, then Finish"]
     OUT{"Outcome"}
     FAIL["Reason and a proposal"]
-    ANALYZE["vrl-analyze-results<br/>Table 1, figures, budget"]
+    ANALYZE["vrl-analyze-results<br/>Table 1, figures, budget check"]
     NEXT{"Stop iterating?"}
     FIND["vrl-write-finding<br/>Finding: Under Review"]
     G3{{"You confirm the finding"}}

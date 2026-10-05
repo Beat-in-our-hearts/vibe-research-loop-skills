@@ -10,12 +10,12 @@ Everything below the line is the template body exactly as it appears in Notion. 
 
 ---
 
-> Capture one idea so a human can judge its feasibility before anything is built; a human ticks Human Approved after the review. Set a short, unique ID, e.g. `lr-warmup`, write the hypothesis as the page title, and write the line of thought before anything else: every section below follows from it.
+> Capture one idea so a human can judge its feasibility before anything is built; a human ticks Human Approved after the review. Set a short, unique ID, e.g. `lr-warmup`, write the hypothesis in short as the page title, at most 15 words, or 20 characters in Chinese, and write the line of thought before anything else: every section below follows from it.
 
 <aside>
 💡 **Line of thought**
 
-*Agent (on creation): five steps of reasoning, in plain words and in this order, written before the sections. Goal: what this idea is for. Observations: what was seen, with its numbers and sources, that prompted it. Hypothesis: the guess, and why it would explain the observations. Test: the smallest test that can tell, and how it grows if the first results are promising. Decision: what result supports or rejects the guess, and what comes next either way.*
+*Agent (on creation): five steps of reasoning, in plain words and in this order, written before the sections. Goal: what this idea is for. Observations: what was seen, with its numbers and sources, that prompted it. Hypothesis: the guess, and why it would explain the observations. Test: the smallest test that can tell. Decision: what result supports or rejects the guess, and what comes next either way.*
 
 - **Goal:** *…*
 - **Observations:** *…*
@@ -56,24 +56,14 @@ Everything below the line is the template body exactly as it appears in Notion. 
 |---|---|---|---|---|
 | *…* | *…* | *…* | *…* | *…* |
 
-**Stages.** *Agent (on creation): start with the smallest stage that can show whether the idea is promising; each later stage runs only when its condition holds, as a new experiment that the user approves as usual.*
-
-| Stage | Groups and seeds | Go on when |
-|---|---|---|
-| *…* | *…* | *…* |
-
 ## 4. Budget
 
-*Agent (on creation) proposes limits from the estimate below; Human (review) sets them. Agent (after runs): update Used after every experiment. Once any limit is reached, the success criteria are met, or several experiments in a row bring no improvement, stop iterating on this idea, draft the corresponding finding, and report to a human.*
+*Agent (on creation): first the estimate, in one sentence: the time the planned test takes on a single GPU and on the GPUs of the current machine in `docs/AGENTS/machine.md`, saying how many, and what the times are based on, such as a log or an earlier report, or that they are a guess. Then propose the limits from it; Human (review) sets them.*
 
-| Item | Limit | Used |
-|---|---|---|
-| Experiments | *…* | *0* |
-| Compute | *…* | *0* |
-| Deadline | *…* | *—* |
+**Estimate:** *…*
 
-**Estimate.** *Agent (on creation): one row per piece of work, setup, smoke runs, and re-evaluations included. Base each estimate on a measured number, such as a log or an earlier report, scaled to the current machine described in `docs/AGENTS/machine.md`; name what limits its speed, such as the GPU, CPU data loading, or the simulator, and say whether it is measured or estimated. End with the total task time and the wall-clock time on this machine. When nothing comparable was measured, plan a short timing run and re-estimate after it.*
-
-| Item | Basis | Estimate |
-|---|---|---|
-| *…* | *…* | *…* |
+| Item | Limit |
+|---|---|
+| Experiments | *…* |
+| Compute (single-GPU hours) | *…* |
+| Deadline | *…* |

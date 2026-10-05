@@ -1,6 +1,6 @@
 ---
 name: vrl-analyze-results
-description: Analyze a finished experiment in a vibe-research-loop workspace. Compute its results from the metrics files, draw publication-style figures and tables, search for related work, fill its Notion page's results and conclusion, update the idea's budget, and decide the next step. Use when an experiment's runs have finished.
+description: Analyze a finished experiment in a vibe-research-loop workspace. Compute its results from the metrics files, draw publication-style figures and tables, search for related work, fill its Notion page's results and conclusion, check the idea's budget, and decide the next step. Use when an experiment's runs have finished.
 ---
 
 # Analyze results
@@ -10,7 +10,7 @@ description: Analyze a finished experiment in a vibe-research-loop workspace. Co
 3. **Figures.** Draw each figure with a script from the result files; save it as PDF and PNG, with its script, under `runs/<date>-<name>/figures/`.
 4. **Literature.** Search for work that explains, supports, or contradicts the result, in the post-experiment mode of vrl-search-papers, and cite it as evidence.
 5. **Page.** Fill sections 5 and 6: Table 1, the figures, one observation per row, and the checks, each ✔ or ✘ with the reason for every ✘. The code-review check passes only after the user has reviewed the code. In section 6, answer whether the success criteria were met, with the deciding numbers, and write the Reproduce command.
-6. **Budget.** Update Used in the idea's Budget.
+6. **Budget.** Count what the idea's experiments have used: their number, the single-GPU hours their runs took, from the logs, and the days left to the Deadline.
 7. **Next.** If the success criteria were met, a Budget limit is reached, or several experiments in a row brought no improvement, stop iterating on the idea and draft its finding with vrl-write-finding. Otherwise propose the next experiment. Report Table 1, the figures, and the next step to the user.
 
 ## Rules
@@ -21,6 +21,8 @@ description: Analyze a finished experiment in a vibe-research-loop workspace. Co
 - Take the IDs of the project page and the databases from `docs/notion/ids.md`. If it is missing, find them with `ntn api v1/search` by exact title, reading every page of results; ask the user which project if several match, and record the IDs there in a table with the columns Object, Title in Notion, Page ID, Database ID, and Data source ID.
 - Create a page with `"template": {"type": "default", "timezone": "<TZ>"}`, where `<TZ>` is the `TZ` in the workspace's `.env`. It comes back blank while Notion applies the template: wait until the template's blocks appear.
 - Fill each section by its gray instructions; once it is filled, delete its gray instruction lines and any `…` placeholder left in it. Delete the template's opening quote when you first fill the page. A section that a later step fills keeps its instructions and placeholders until that step fills it. To see the instructions of a cleaned section, read the database's template: `ntn api v1/data_sources/<data source ID>/templates`, then that template page's blocks.
+- Write every page in sentences a colleague can follow without decoding. Common abbreviations such as w/, w/o, ckpt, bs, lr, approx., or SR are fine on their own, but never string abbreviations and symbols together with no words between them; spell an abbreviation out the first time only when it is uncommon in the field or made up for this project.
+- Keep each table cell short: a value, a phrase, or one sentence. When a cell holds several points, put each on its own line within the cell (a `\n` in its rich text, since a cell cannot hold list blocks), starting with `1.`, `2.` when their order matters and `•` otherwise. When a cell would run past three lines, move its content into a list right below the table and leave a short pointer in the cell.
 - Read a page before every write and read it back after; merge the user's edits instead of overwriting them.
 - The user reviews a page by coloring its text or the text's background: red marks what they think is wrong, orange what they did not understand, purple what they cannot accept; other colors are not marks. Before every write to a page, read the colors of all its text, table cells included (`annotations.color` of each rich-text item, and the block's `color`), and answer each mark, telling the user what you change and why: fix red text; explain orange text in plainer words and rewrite it so that it no longer needs the explanation; for purple text, propose an alternative and leave the text and its mark in place until the user decides. Write rewritten text without the mark, and leave every mark you have not resolved in place.
 - Add a figure by uploading its PNG with `ntn files create --filename <name>.png --content-type image/png < <file>`, then inserting it as an image block right above its caption.
