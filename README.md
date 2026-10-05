@@ -89,3 +89,7 @@ Each agent ignores the other's settings, so one folder serves both.
 ```bash
 rm -rf skills/vrl-init-workspace/references/guide && mkdir -p skills/vrl-init-workspace/references/guide && git -C <guide checkout> archive HEAD | tar -x -C skills/vrl-init-workspace/references/guide
 ```
+
+## License
+
+[MIT](LICENSE), © 2026 Zuxing Lu.
