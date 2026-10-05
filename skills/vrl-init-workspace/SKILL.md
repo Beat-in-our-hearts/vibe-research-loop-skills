@@ -36,11 +36,11 @@ disable-model-invocation: true
    |---|---|---|
    | Local | This machine | `uv`, `ntn`, `gh`, and `hf` if the user wants the bucket |
    | Remote | This machine | `ntn`, `gh` |
-   | Remote | The remote host, through the SSH master: `ssh <target> 'bash -s -- <command> --only <tools> --workspace <remote workspace>' < scripts/setup_clis.sh` | `uv`, `gh`, and `hf` if the user wants the bucket |
+   | Remote | The remote host, once the SSH master is up: right after the Connection step of "Set up a remote workspace" or "Add a remote machine", run through the master as `ssh -S /tmp/vrl-ssh-%C -p <port> <user>@<host> 'bash -s -- <command> --only <tools>' < scripts/setup_clis.sh` | `uv`, `gh`, and `hf` if the user wants the bucket |
 
    - Run `check` first and show the user its table; run `install` for what is missing only after they agree.
    - Run `login` in the background, since `gh` and `hf` wait until the user approves. Without a terminal, each login prints a URL and a one-time code: pass them to the user at once, as `hf`'s code expires in 5 minutes, and tell them to open the URL in any browser and check the code. Never ask for a token or pass one to a command.
-   - Log in to `ntn` and `gh` now, and to `hf` in the Hugging Face part, once the workspace's `.env` exists: pass that workspace, in remote mode the remote one, as `--workspace`, since its `XDG_CACHE_HOME` decides where `hf` keeps the login.
+   - Log in to `ntn` and `gh` right after installing them, and to `hf` in the Hugging Face part, once the workspace's `.env` exists. Pass `--workspace` only to that `hf` login, with the workspace, in remote mode the remote one, since its `XDG_CACHE_HOME` decides where `hf` keeps the login; before `.env` exists, the script refuses the `hf` login.
    - Finish with `check`, and carry its notes, such as a `PATH` line or `NOTION_KEYRING=0` for the shell profile, into the report.
 4. **Parts.** Do the parts below in order, each by following its prompt. If the user names only some parts, do only those; otherwise skip a part only if the user says it is done.
 

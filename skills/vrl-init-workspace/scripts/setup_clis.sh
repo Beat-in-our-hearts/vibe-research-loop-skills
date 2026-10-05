@@ -17,7 +17,8 @@
 #                left to `uv tool install --upgrade`.
 #   --only       A comma-separated subset of uv,ntn,gh,hf (default: all four).
 #   --workspace  The workspace root whose .env to load (default: the current directory, if it has one).
-#                hf keeps its login under XDG_CACHE_HOME, which .env sets.
+#                hf keeps its login under XDG_CACHE_HOME, which .env sets, so the hf login is refused
+#                while that .env does not exist yet; everything else runs without it.
 #
 # On another host: ssh host 'bash -s -- install --only uv,hf --workspace /abs/path' < setup_clis.sh
 #
@@ -61,8 +62,9 @@ main() {
 	ARCH="$(uname -m)"
 	NOTES=""
 	FAILED=""
+	ENV_MISSING=""
 
-	load_env "$workspace" || return 2
+	load_env "$workspace"
 	BIN_DIR="$HOME/.local/bin"
 	BIN_SHOWN="\$HOME/.local/bin"
 	# The user's PATH, to tell where their shell finds each tool; this script itself runs the copies in
@@ -120,8 +122,10 @@ load_env() {
 		ws="$PWD"
 	fi
 	if [ ! -f "$ws/.env" ]; then
-		err "No .env in $ws"
-		return 1
+		# Setup installs the tools before the workspace has a .env; only the hf login needs it.
+		ENV_MISSING="$ws"
+		note "No .env in $ws yet, so this ran without it. Log in to hf only once it exists."
+		return 0
 	fi
 	set -a
 	# shellcheck disable=SC1091
@@ -359,6 +363,10 @@ do_login() {
 		wants "$t" || continue
 		if [ "$(status_of "$t")" = missing ]; then
 			fail "$t" "$t is not installed; run install first"
+			continue
+		fi
+		if [ "$t" = hf ] && [ -n "$ENV_MISSING" ]; then
+			fail hf "No .env in $ENV_MISSING yet: log in to hf once it exists, since XDG_CACHE_HOME decides where hf keeps its login"
 			continue
 		fi
 		if logged_in "$t"; then
