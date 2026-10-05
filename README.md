@@ -14,25 +14,21 @@ Agent skills for the vibe-research-loop guide, the research workflow in which AI
 
 ## Installing
 
-Once per machine, clone this repository into your home directory:
+Once per machine, run the installer. It needs only `curl` and `tar`, no sudo and no clone: it downloads the latest release to a temporary folder, copies each skill into `~/.agents/skills`, which Codex reads, and links it from `~/.claude/skills`, which Claude Code reads:
 
 ```bash
-git clone <repository URL> ~/vibe-research-loop-skills
+curl -fsSL https://raw.githubusercontent.com/Beat-in-our-hearts/vibe-research-loop-skills/main/install.sh | bash
 ```
 
-Then link every skill into the personal skill folders of both agents. A skill folder that already exists under the same name is left alone:
+Run it again to update; it also removes skills a newer release dropped. Add `-s -- --version v0.1.0` after `bash` to install a given tag, branch, or commit, or `-s -- --uninstall` to remove the skills. It replaces only folders it installed itself, and links to an old clone of this repository; it reports any other folder with a skill's name and leaves it alone. Start a new session if a skill does not show up.
 
-```bash
-for d in ~/vibe-research-loop-skills/skills/*/; do n=$(basename "$d"); for t in ~/.claude/skills ~/.agents/skills; do mkdir -p "$t"; [ -e "$t/$n" ] || ln -s "${d%/}" "$t/$n"; done; done
-```
+With Node.js, [`skills`](https://github.com/vercel-labs/skills) installs them too: `npx skills add Beat-in-our-hearts/vibe-research-loop-skills -g -a claude-code -a codex --all`.
 
 The skills use four CLIs: `uv`, `ntn` (Notion), `gh` (GitHub), and `hf` (Hugging Face). `vrl-init-workspace` installs them and logs in to them; to do that without an agent, run its script in a terminal. It needs no sudo and installs into `~/.local/bin`; add `check` to see what is installed and logged in, `install --upgrade` to upgrade them to their latest releases, or `--only ntn,gh` for a subset:
 
 ```bash
-bash ~/vibe-research-loop-skills/skills/vrl-init-workspace/scripts/setup_clis.sh
+bash ~/.agents/skills/vrl-init-workspace/scripts/setup_clis.sh
 ```
-
-A `git pull` in `~/vibe-research-loop-skills` updates every linked skill. Run the loop again when a pull adds a skill, and delete a skill's two links when a pull removes it. Start a new session if a skill does not show up.
 
 ## Using
 
