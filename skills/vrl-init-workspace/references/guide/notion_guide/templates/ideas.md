@@ -15,7 +15,7 @@ Everything below the line is the template body exactly as it appears in Notion. 
 <aside>
 💡 **Line of thought**
 
-*Agent (on creation): five steps of reasoning, in plain words and in this order, written before the sections. Goal: what this idea is for. Observations: what was seen, with its numbers and sources, that prompted it. Hypothesis: the guess, and why it would explain the observations. Test: the smallest test that can tell. Decision: what result supports or rejects the guess, and what comes next either way.*
+*Agent (on creation): five steps of reasoning, in plain words and in this order, written before the sections. Goal: what this idea is for. Observations: what was seen, with its numbers and sources, that prompted it. Hypothesis: the guess, and why it would explain the observations. Test: the smallest test that can tell, and how it grows if the first results are promising. Decision: what result supports or rejects the guess, and what comes next either way.*
 
 - **Goal:** *…*
 - **Observations:** *…*
@@ -56,11 +56,15 @@ Everything below the line is the template body exactly as it appears in Notion. 
 |---|---|---|---|---|
 | *…* | *…* | *…* | *…* | *…* |
 
-## 4. Budget
+## 4. Stages and budget
 
-*Agent (on creation): first the estimate, in one sentence: the time the planned test takes on a single GPU and on the GPUs of the current machine in `docs/AGENTS/machine.md`, saying how many, and what the times are based on, such as a log or an earlier report, or that they are a guess. Then propose the limits from it; Human (review) sets them.*
+*Agent (on creation): one row per stage, from the smallest test that can show whether the idea is promising to the full test. What it tests: its groups and seeds in a few words. Single GPU and This machine: its time on one GPU and on the GPUs of the current machine in `docs/AGENTS/machine.md`, saying how many. Go on when: the condition the next stage needs. Below the table, give in one sentence what the times are based on, such as a log or an earlier report, or that they are a guess. Then propose the limits; Human (review) sets them. Each experiment runs one stage, or the part of it that fits the budget left.*
 
-**Estimate:** *…*
+| Stage | What it tests | Single GPU | This machine | Go on when |
+|---|---|---|---|---|
+| *…* | *…* | *…* | *…* | *…* |
+
+**Basis:** *…*
 
 | Item | Limit |
 |---|---|

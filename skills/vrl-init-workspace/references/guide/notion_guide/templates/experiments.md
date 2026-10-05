@@ -24,7 +24,7 @@ Everything below the line is the template body exactly as it appears in Notion. 
 
 ## 2. Design and plan
 
-*Agent (on creation): give the plan file's location and name, e.g. `docs/plans/<date>-<name>.md`, and keep the design and plan on this page consistent with it. Exactly one independent variable; every other factor that could affect the result is a controlled variable and stays identical across runs. Under Deviations, number each difference from the idea's Planned test, and any time estimate above the idea's, with its reason: approving the plan accepts them, and any change after approval needs a new approval.*
+*Agent (on creation): give the plan file's location and name, e.g. `docs/plans/<date>-<name>.md`, and keep the design and plan on this page consistent with it. Exactly one independent variable; every other factor that could affect the result is a controlled variable and stays identical across runs. Under Deviations, number each difference from the idea's Planned test and from the stage this experiment runs, any part of the stage left out to fit the budget, and any time estimate above the stage's, with its reason: approving the plan accepts them, and any change after approval needs a new approval.*
 
 | Item | Content |
 |---|---|

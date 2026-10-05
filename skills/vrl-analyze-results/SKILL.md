@@ -11,7 +11,7 @@ description: Analyze a finished experiment in a vibe-research-loop workspace. Co
 4. **Literature.** Search for work that explains, supports, or contradicts the result, in the post-experiment mode of vrl-search-papers, and cite it as evidence.
 5. **Page.** Fill sections 5 and 6: Table 1, the figures, one observation per row, and the checks, each ✔ or ✘ with the reason for every ✘. The code-review check passes only after the user has reviewed the code. In section 6, answer whether the success criteria were met, with the deciding numbers, and write the Reproduce command.
 6. **Budget.** Count what the idea's experiments have used: their number, the single-GPU hours their runs took, from the logs, and the days left to the Deadline.
-7. **Next.** If the success criteria were met, a Budget limit is reached, or several experiments in a row brought no improvement, stop iterating on the idea and draft its finding with vrl-write-finding. Otherwise propose the next experiment. Report Table 1, the figures, and the next step to the user.
+7. **Next.** If the success criteria were met, a Budget limit is reached, or several experiments in a row brought no improvement, stop iterating on the idea and draft its finding with vrl-write-finding. Otherwise propose the next experiment: the next stage, or the part of it that fits the budget left. Report Table 1, the figures, and the next step to the user.
 
 ## Rules
 

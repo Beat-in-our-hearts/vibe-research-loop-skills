@@ -7,7 +7,10 @@ description: Plan the next experiment of an approved idea in a vibe-research-loo
 
 An experiment is one controlled comparison: a baseline, a treatment that changes exactly one thing, and ablations when needed. Write the plan so a reviewer can follow it without this conversation: every run, every number with its source, every choice with its reason. Nothing runs until the user approves the plan.
 
-1. **Idea.** Take the idea the user names, or else query Ideas for the approved ideas in Backlog and take the highest-Priority one. Go on only if its Human Approved is checked and its Budget has room, which you count from its earlier experiments: their number, the single-GPU hours their runs took, from the logs, and today's date against the Deadline; otherwise tell the user and stop. Read its Planned test, Budget, and earlier experiments. If it has earlier experiments, plan the next experiment that the latest one's Conclusion proposes.
+1. **Idea.** Take the idea the user names, or else query Ideas for the approved ideas in Backlog and take the highest-Priority one. Go on only if its Human Approved is checked; otherwise tell the user and stop. Read its Planned test, Stages and budget, and earlier experiments, then decide what to run:
+   - Stage: the one the latest experiment's Conclusion proposes, or else the earliest stage that has not run yet and whose previous stage's Go on when holds.
+   - Budget left: each limit minus what the idea's earlier experiments used: their number, the single-GPU hours their runs took, from the logs, and the days to the Deadline.
+   - If the stage fits the budget left, plan all of it. If not, plan only the part that fits, such as fewer seeds, fewer controls, or shorter training, and list each cut under Deviations with its reason. If not even its smallest useful part fits, tell the user the budget is used up and stop.
 2. **Facts.** Before designing anything, settle every fact the plan rests on, read-only:
    - Take every number from a source you can point to, such as a log, report, or results file, with the hardware it was measured on; estimate only what nobody has measured, and mark it as an estimate.
    - Read the current machine in `docs/AGENTS/machine.md`, and check the code, environments, checkpoints, and data the plan needs; count what is missing or must be rebuilt as setup work.
@@ -16,7 +19,7 @@ An experiment is one controlled comparison: a baseline, a treatment that changes
 3. **Page.** Create the page in Experiments with Name (the experiment in a few words, at most 15 words, or 20 characters in Chinese), ID (lowercase English words joined by hyphens, at most 24 characters, unique in Experiments, never renamed), and Idea. Leave Status at Planned and Human Approved unchecked. If the idea's Status is Backlog, set it to Testing.
 4. **Draft.** Fill sections 1–3 by the template's instructions, in the language the workspace's language rules set for Notion pages, or the working language if they set none, with planned values where no config exists yet:
    - Runs: every run, evaluation-only checks included, with what it trains, how it is evaluated, and what it shows; why each control is there; and each design choice with its reason and the alternative you considered.
-   - Deviations: every difference from the idea's Planned test, with its reason; copy the success criteria verbatim.
+   - Deviations: every difference from the idea's Planned test and from the stage, each cut made to fit the budget included, with its reason; copy the success criteria verbatim.
    - Data flow and losses: the traced batch, as a shape diagram and one line per loss term, for every model that differs, so a reviewer can check what the code computes without reading it.
    - Time estimate: every piece of work, from measured numbers scaled to the current machine, counting what the treatment adds over the baseline, re-evaluations, and environments to rebuild.
    - Detail plan: the steps in order, each with its output, condition to go on, time, and every write it makes.
@@ -29,7 +32,7 @@ An experiment is one controlled comparison: a baseline, a treatment that changes
    - Does the time estimate fit the current machine, show its basis, and separate measured from estimated numbers?
    - Does every deviation carry a reason, and are the success criteria copied unchanged?
    - Does every Detail plan step have a condition to go on and list its writes?
-8. **Report.** Show the user the page link, the question, the runs with their machines, the time estimate before and after the smoke run next to the idea's estimate and the room left in its Budget, every deviation with its reason, and the writes of the post-approval steps, which ticking Human Approved also approves. Ask them to review sections 1–3, by coloring the text as the rules below describe or in words, and to tick Human Approved; launch nothing before they do.
+8. **Report.** Show the user the page link, the question, the stage it runs and what it leaves out to fit the budget, the runs with their machines, the time estimate before and after the smoke run next to the stage's times on the idea and the budget left, every deviation with its reason, and the writes of the post-approval steps, which ticking Human Approved also approves. Ask them to review sections 1–3, by coloring the text as the rules below describe or in words, and to tick Human Approved; launch nothing before they do.
 
 ## Rules
 
