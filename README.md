@@ -12,6 +12,34 @@ Agent skills for the vibe-research-loop guide, the research workflow in which AI
 | [`vrl-write-finding`](skills/vrl-write-finding/SKILL.md) | Drafts a finding for the user to confirm, then closes the idea | The user or the agent |
 | [`vrl-search-papers`](skills/vrl-search-papers/SKILL.md) | Adds at most three papers per search to the Literature Library | The user or the agent |
 
+## Install in one prompt
+
+Paste this into Claude Code or Codex, and approve the command when the agent asks: it needs the network and writes to `~/.agents` and `~/.claude`, outside the project.
+
+```text
+Install the vibe-research-loop skills by running `curl -fsSL https://raw.githubusercontent.com/Beat-in-our-hearts/vibe-research-loop-skills/main/install.sh | bash`, then tell me which skills it installed, anything it left alone, and the next step it prints.
+```
+
+To install by hand, or to update or remove the skills, see [Installing](#installing).
+
+## Installing
+
+Once per machine, run the installer. It needs only `curl` and `tar`, no sudo and no clone: it downloads the latest release to a temporary folder, copies each skill into `~/.agents/skills`, which Codex reads, and links it from `~/.claude/skills`, which Claude Code reads:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Beat-in-our-hearts/vibe-research-loop-skills/main/install.sh | bash
+```
+
+Run it again to update; it also removes skills a newer release dropped. Add `-s -- --version v0.1.0` after `bash` to install a given tag, branch, or commit, or `-s -- --uninstall` to remove the skills. It replaces only folders it installed itself, and links to an old clone of this repository; it reports any other folder with a skill's name and leaves it alone. Start a new session if a skill does not show up.
+
+With Node.js, [`skills`](https://github.com/vercel-labs/skills) installs them too: `npx skills add Beat-in-our-hearts/vibe-research-loop-skills -g -a claude-code -a codex --all`.
+
+The skills use four CLIs: `uv`, `ntn` (Notion), `gh` (GitHub), and `hf` (Hugging Face). `vrl-init-workspace` installs them and logs in to them; to do that without an agent, run its script in a terminal. It needs no sudo and installs into `~/.local/bin`; add `check` to see what is installed and logged in, `install --upgrade` to upgrade them to their latest releases, or `--only ntn,gh` for a subset:
+
+```bash
+bash ~/.agents/skills/vrl-init-workspace/scripts/setup_clis.sh
+```
+
 ## Workflow
 
 ```mermaid
@@ -53,34 +81,6 @@ flowchart TD
 ```
 
 Green steps are what the agent does, each with the Notion status it leaves behind. Purple steps wait for you: nothing past them runs until you act. The agent stops iterating on an idea when the success criteria are met, a Budget limit is reached, or several experiments in a row bring no improvement. Dashed arrows are the loops back: papers and closed ideas inspire new ideas, and a failed or invalid run goes back to planning once you decide how. vrl-search-papers also runs daily and after each experiment, to look for related work.
-
-## Install in one prompt
-
-Paste this into Claude Code or Codex, and approve the command when the agent asks: it needs the network and writes to `~/.agents` and `~/.claude`, outside the project.
-
-```text
-Install the vibe-research-loop skills by running `curl -fsSL https://raw.githubusercontent.com/Beat-in-our-hearts/vibe-research-loop-skills/main/install.sh | bash`, then tell me which skills it installed, anything it left alone, and the next step it prints.
-```
-
-To install by hand, or to update or remove the skills, see [Installing](#installing).
-
-## Installing
-
-Once per machine, run the installer. It needs only `curl` and `tar`, no sudo and no clone: it downloads the latest release to a temporary folder, copies each skill into `~/.agents/skills`, which Codex reads, and links it from `~/.claude/skills`, which Claude Code reads:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Beat-in-our-hearts/vibe-research-loop-skills/main/install.sh | bash
-```
-
-Run it again to update; it also removes skills a newer release dropped. Add `-s -- --version v0.1.0` after `bash` to install a given tag, branch, or commit, or `-s -- --uninstall` to remove the skills. It replaces only folders it installed itself, and links to an old clone of this repository; it reports any other folder with a skill's name and leaves it alone. Start a new session if a skill does not show up.
-
-With Node.js, [`skills`](https://github.com/vercel-labs/skills) installs them too: `npx skills add Beat-in-our-hearts/vibe-research-loop-skills -g -a claude-code -a codex --all`.
-
-The skills use four CLIs: `uv`, `ntn` (Notion), `gh` (GitHub), and `hf` (Hugging Face). `vrl-init-workspace` installs them and logs in to them; to do that without an agent, run its script in a terminal. It needs no sudo and installs into `~/.local/bin`; add `check` to see what is installed and logged in, `install --upgrade` to upgrade them to their latest releases, or `--only ntn,gh` for a subset:
-
-```bash
-bash ~/.agents/skills/vrl-init-workspace/scripts/setup_clis.sh
-```
 
 ## Using
 
