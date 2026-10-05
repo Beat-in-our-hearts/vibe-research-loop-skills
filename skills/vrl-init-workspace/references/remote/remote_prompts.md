@@ -18,7 +18,7 @@ Follow "Set up a workspace" in `<guide>/workspace_guide/workspace_prompts.md`, w
    | Existing host rules | None | Rule files that already describe this host or this user's habits, such as an older `AGENTS.md`, to carry over |
 
 2. **Connection.** Before creating anything, start or reuse the SSH master as in `<remote>/docs/AGENTS/remote.md`, and check in one call: `hostname`, `whoami`, that the remote workspace exists, is writable, and lists nothing the user did not expect, and that `git` and `tmux` are on the remote host, and whether git has a user name and email there. Check that `sshfs` is on the local machine. If anything is missing, ask the user; never install on either side without their approval. If git has no identity on the remote host, ask the user which name and email to commit under, and set them in the workspace repository only.
-   - If the remote host reaches some services only through a proxy, such as GitHub, model hubs, or Google Drive, ask the user how to turn it on, record it in `docs/AGENTS/machine.md` in step 5, and start the tmux session from a shell where it is on, so that every window inherits it.
+   - If the remote host reaches some services only through a proxy, such as GitHub or model hubs, ask the user how to turn it on, record it in `docs/AGENTS/machine.md` in step 5, and start the tmux session from a shell where it is on, so that every window inherits it.
 3. **Folders.** In place of step 2 of the guide's prompt:
    - On the remote host, create the folders of the tree in `<guide>/workspace_guide/docs/AGENTS/file_structure.md` other than `docs/AGENTS/` and those named with a `<placeholder>`, and make the remote workspace a git repository on branch `main` with this `.gitignore`, adding the workspace remote if the user gave one:
 
@@ -54,15 +54,15 @@ Follow "Set up a workspace" in `<guide>/workspace_guide/workspace_prompts.md`, w
 5. **This machine.** Do step 4 of the guide's prompt on the remote host, through the SSH master. Measure the real limits, not host-wide numbers: the container's cgroup limits for CPU and memory, the quota of the filesystem that holds the remote workspace, and the free space of the system disk. Container hostnames change when the host is reprovisioned, so ask the user for a short name.
 6. **Code repository.** Do step 5 of the guide's prompt on the remote host.
 7. **Check.** Do step 6 of the guide's prompt in the launch directory.
-8. **Commit.** Commit the rules repository locally, and the workspace repository on the remote host; push each that has a remote. The workspace repository pushes from the remote host, which needs its own access to that remote: if it has none, ask the user to log in there themselves, for example with `gh auth login` in the remote tmux session, and never handle their token.
+8. **Commit.** Commit the rules repository locally, and the workspace repository on the remote host; push each that has a remote. The workspace repository pushes from the remote host, which needs its own access to that remote: if it has none, log in to `gh` there with the skill's `scripts/setup_clis.sh` (`login --only gh`), which also lets git use that login, and never handle the user's token.
 9. **Report.** Do step 8 of the guide's prompt, showing both trees, and add the `sshfs` command to remount after a reboot.
 
-## Notion and Google Drive in remote mode
+## Notion and Hugging Face in remote mode
 
-Use this with "Set up Notion" and "Set up Google Drive" of the guide, or their "Add a machine" sections, on a remote-mode machine.
+Use this with "Set up Notion" and "Set up Hugging Face" of the guide, or their "Add a machine" sections, on a remote-mode machine.
 
-- **Notion.** `ntn` runs on the local machine. If that machine has no OS keychain, as on a headless server, `ntn login` cannot store its token and `ntn` then fails with a keychain error: ask the user to export `NOTION_KEYRING=0` in their shell profile and to log in again with `NOTION_KEYRING=0 ntn login`, and run `ntn` with it from then on. Record this under Notion in `docs/AGENTS/remote.md`.
-- **Google Drive.** rclone runs on the remote host, which has no browser. Ask the user to run `rclone config` themselves in the remote tmux session, answer no to the web-browser question, run the `rclone authorize` command it prints on a machine with a browser, and paste the token that command prints into the waiting `rclone config` prompt on the remote host. If the user gives the Drive folder as a link, set the remote's `root_folder_id` to the folder's ID with `rclone config update <remote> root_folder_id <ID>`, and use `<remote>:` as the workspace's folder in `docs/AGENTS/drive.md`.
+- **Notion.** `ntn` runs on the local machine. If that machine has no OS keychain, as on a headless server, `ntn` stores its token in a file instead: the skill's `scripts/setup_clis.sh` detects this and logs in with `NOTION_KEYRING=0`. Ask the user to export `NOTION_KEYRING=0` in their shell profile, run `ntn` with it from then on, and record this under Notion in `docs/AGENTS/remote.md`.
+- **Hugging Face.** `hf` runs on the remote host, which has no browser. Install and log in to it with the skill's `scripts/setup_clis.sh`, run on the remote host through the SSH master with `--workspace` set to the remote workspace, so that it loads that `.env`; the login prints a URL and a code, which the user opens on any machine with a browser. Run every `hf` command on the remote host with that `.env` loaded.
 
 ## Add a remote machine
 

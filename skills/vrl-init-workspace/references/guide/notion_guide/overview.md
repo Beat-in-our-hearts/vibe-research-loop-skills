@@ -78,7 +78,7 @@ Shared by all projects and independent of every project's knowledge memory: proj
 | Notion | The index and the conclusions: ideas, experiment reports, findings, curated papers |
 | Git: the code repository | Code and configs; each experiment records the commit it was launched from |
 | Git: the workspace repository | Agent rules, plan files, and test code, shared by every machine (see [`workspace_guide/`](../workspace_guide/)) |
-| Google Drive, optional | Datasets as versioned archives with checksums, and every machine's `runs/` and `logs/` under the same paths as in the workspace, without intermediate checkpoints (see [`gdrive_guide/`](../gdrive_guide/)) |
+| Hugging Face bucket, optional | Datasets as versioned archives with checksums, and every machine's `runs/` and `logs/` under the same paths as in the workspace, without intermediate checkpoints (see [`hf_guide/`](../hf_guide/)) |
 | Each machine only | `.env`, the machine profile, caches, scratch files, and intermediate checkpoints |
 
 ## Setting it up
