@@ -30,7 +30,7 @@ disable-model-invocation: true
    | Another machine | The URL of the workspace repository, if it is not cloned here yet, and in remote mode what "Add a remote machine" asks for; the URL of the project's code repository, if there is one |
 
    When a prompt asks for one of these, use the answer you have. Ask later only for what depends on what you find, such as confirming the machine profile, reusing an existing Notion page, or the steps that need the Notion app.
-3. **Tools.** Install and log in to the CLIs with [scripts/setup_clis.sh](scripts/setup_clis.sh): it needs no sudo and puts everything in the user's home directory, every command in `~/.local/bin`, on macOS and Linux alike. A tool found only elsewhere, such as a Homebrew or apt copy, shows as `elsewhere`: `install` adds a copy in `~/.local/bin` and leaves the other alone. Run it as `setup_clis.sh <check|install|login> --only <tools> [--workspace <dir>]`. Wherever a prompt asks the user to install or log in to `uv`, `ntn`, `gh`, or `hf`, use the script instead.
+3. **Tools.** Install and log in to the CLIs with [scripts/setup_clis.sh](scripts/setup_clis.sh): it needs no sudo and puts everything in the user's home directory, every command in `~/.local/bin`, on macOS and Linux alike. A tool found only elsewhere, such as a Homebrew or apt copy, shows as `elsewhere`: `install` adds a copy in `~/.local/bin` and leaves the other alone. Run it as `setup_clis.sh <check|install|login> --only <tools> [--workspace <dir>]`. Wherever a prompt says to install or log in to `uv`, `ntn`, `gh`, or `hf`, or to ask the user to, use the script instead.
 
    | Mode | Where | Tools |
    |---|---|---|
