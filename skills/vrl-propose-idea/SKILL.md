@@ -1,6 +1,6 @@
 ---
 name: vrl-propose-idea
-description: Write a testable research hypothesis into the project's Ideas database in Notion, for the user to approve - its line of thought, motivation, feasibility, a planned test listing every group, and a budget giving the single-GPU and multi-GPU time on the current machine. Use in a vibe-research-loop workspace when the user wants to add, draft, or brainstorm research ideas, or when a finding or paper suggests one.
+description: Write a testable research hypothesis into the project's Ideas database in Notion, for the user to approve - its line of thought, motivation, feasibility, a planned test listing every group, and stages from the smallest test to the full one, each with its single-GPU and multi-GPU time on the current machine, under proposed budget limits. Use in a vibe-research-loop workspace when the user wants to add, draft, or brainstorm research ideas, or when a finding or paper suggests one.
 ---
 
 # Propose an idea
@@ -25,14 +25,14 @@ An idea is one falsifiable hypothesis, written down so the user can judge its fe
 5. **Body.** Fill the line of thought and sections 1–4 by the template's instructions, in the language the workspace's language rules set for Notion pages, or in the working language if they set none:
    - Groups: every group, the baseline and any control included, with what it changes, whether it trains, how it is evaluated, and its seeds; say why each control is there.
    - Success criteria: pass/fail thresholds fixed before anything runs, with every metric defined in one plain sentence where it first appears.
-   - Budget: one sentence with the time the planned test takes on a single GPU and on the current machine's GPUs, and what it is based on: a measured number in a few words, or that it is a guess. The limits are only your proposal.
+   - Stages and budget: begin with the smallest test that can show whether the idea is promising, and grow to the full test. Give each stage what it tests, its time on a single GPU and on the current machine's GPUs, and its condition for going on; then, in one sentence, what the times are based on: a measured number in a few words, or that they are a guess. The limits are only your proposal.
 6. **Self-review.** Read the page back as the user would, and revise it until every answer is yes:
    - Can a reader tell how many groups run, what each one changes, and why each is there?
    - Is every term and metric explained in plain words, and every number traced to its source?
-   - Does the budget's estimate give the time on a single GPU and on the current machine, with its basis?
+   - Does every stage say what it tests, its time on a single GPU and on the current machine, and its condition for going on, with the basis of the times?
    - Does each section follow from the line of thought, with no step missing?
    - Are the settings the user named used unchanged?
-7. **Report.** Show the user one table with each idea's page link, hypothesis, groups, success criteria, and proposed budget, then the facts you could not settle. Ask them to review the page (by coloring its text as the rules below describe, or in words), set the Budget limits, and tick Human Approved; build nothing before they do.
+7. **Report.** Show the user one table with each idea's page link, hypothesis, groups, success criteria, stages with their times, and proposed limits, then the facts you could not settle. Ask them to review the page (by coloring its text as the rules below describe, or in words), set the Budget limits, and tick Human Approved; build nothing before they do.
 
 ## Rules
 

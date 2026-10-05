@@ -66,7 +66,7 @@ flowchart TD
     OUT -->|Failed or Invalid| FAIL
     FAIL -.->|you decide| PLAN
     ANALYZE --> NEXT
-    NEXT -->|no: next experiment| PLAN
+    NEXT -->|no: next stage| PLAN
     NEXT -->|yes| FIND --> G3 --> CLOSE
     CLOSE -.->|new ideas| IDEA
 
@@ -80,7 +80,7 @@ flowchart TD
     class OUT,NEXT check
 ```
 
-Green steps are what the agent does, each with the Notion status it leaves behind. Purple steps wait for you: nothing past them runs until you act. The agent stops iterating on an idea when the success criteria are met, a Budget limit is reached, or several experiments in a row bring no improvement. Dashed arrows are the loops back: papers and closed ideas inspire new ideas, and a failed or invalid run goes back to planning once you decide how. vrl-search-papers also runs daily and after each experiment, to look for related work.
+Green steps are what the agent does, each with the Notion status it leaves behind. Purple steps wait for you: nothing past them runs until you act. Each experiment runs one stage of the idea, or the part of it that fits the budget left. The agent stops iterating on an idea when the success criteria are met, a Budget limit is reached, or several experiments in a row bring no improvement. Dashed arrows are the loops back: papers and closed ideas inspire new ideas, and a failed or invalid run goes back to planning once you decide how. vrl-search-papers also runs daily and after each experiment, to look for related work.
 
 ## Using
 
