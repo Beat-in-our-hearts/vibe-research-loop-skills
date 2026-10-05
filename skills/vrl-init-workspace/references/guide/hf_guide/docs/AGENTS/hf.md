@@ -15,5 +15,5 @@
 - Never upload intermediate checkpoints, and leave them out of a run folder's sync with `--exclude`: private storage counts against the account's quota and is billed above it.
 - Pack a folder of many small files into one archive before uploading it: every file costs requests against the Hub's rate limits.
 - Download by path, only what the task needs. Check a dataset archive against its `.sha256`, extract it to local disk, and point `data/` at the copy; never train from the bucket directly.
-- Leave the `hf` login on each machine to the user; never handle its token.
+- Log in to `hf` only through a login the user approves: with `.env` loaded, run `hf auth login --format agent` in the background, pass the user the URL and code it prints at once, as the code expires in 5 minutes, and wait for their approval in a browser. Never ask for the token, print it, or pass it to a command.
 - If a transfer fails, retry once, then report.

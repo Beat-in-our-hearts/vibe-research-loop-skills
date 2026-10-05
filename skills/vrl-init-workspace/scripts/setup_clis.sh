@@ -156,13 +156,15 @@ version_of() {
 	printf '%s\n' "$out" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n 1
 }
 
-# ok: in ~/.local/bin. elsewhere: only outside it. missing: nowhere. outdated: hf without buckets.
+# ok: in ~/.local/bin. elsewhere: only outside it. missing: nowhere. outdated: hf older than 2.0, without
+# hf buckets or the browser login that `hf auth login --format agent` runs.
 status_of() {
 	if [ ! -x "$BIN_DIR/$1" ]; then
 		if first_on_path "$1" >/dev/null; then echo elsewhere; else echo missing; fi
 		return
 	fi
-	if [ "$1" = hf ] && ! "$BIN_DIR/hf" buckets --help >/dev/null 2>&1 </dev/null; then
+	if [ "$1" = hf ] && { ! "$BIN_DIR/hf" buckets --help >/dev/null 2>&1 </dev/null ||
+		! "$BIN_DIR/hf" auth login --help 2>/dev/null </dev/null | grep -q -- --format; }; then
 		echo outdated
 		return
 	fi
@@ -229,7 +231,7 @@ do_install() {
 				fi
 				continue
 				;;
-			outdated) say "$t has no 'hf buckets'; installing a newer one" ;;
+			outdated) say "$t is older than 2.0; installing a newer one" ;;
 			elsewhere) say "Installing $t into $BIN_DIR, besides $(first_on_path "$t")" ;;
 			missing) say "Installing $t" ;;
 		esac
