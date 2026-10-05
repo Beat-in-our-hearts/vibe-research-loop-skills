@@ -1,14 +1,14 @@
 ---
 name: vrl-init-workspace
-description: Initialize a vibe-research-loop workspace in the current directory, or add this machine to an existing one, by following the setup prompts of the bundled vibe-research-loop guide in order - the workspace itself, the Notion CLI and the project's Notion pages, and optionally a Hugging Face bucket. Supports a remote mode in which this machine keeps only the rules and computes on a remote host over SSH. Can also redo a single part.
+description: Initialize a vibe-research-loop workspace in the current directory, or add this machine to an existing one, by following the bundled guide's setup prompts in order - the workspace, the Notion CLI and the project's Notion pages, and optionally a Hugging Face bucket. Supports a remote mode, in which this machine keeps only the rules and computes on a remote host over SSH. Can also redo a single part.
 disable-model-invocation: true
 ---
 
 # Initialize a workspace
 
-This skill carries the English edition of the vibe-research-loop guide in [references/guide/](references/guide/), so the guide never needs to be cloned; `<guide>` in its prompts means that folder. Read its [README.md](references/guide/README.md) first.
+[references/guide/](references/guide/) holds the English edition of the vibe-research-loop guide, so the guide never needs to be cloned; `<guide>` in its prompts means that folder. Read its [README.md](references/guide/README.md) first.
 
-It also carries a remote mode, which the guide lacks, in [references/remote/](references/remote/): the agent runs on the local machine and computes on a remote host over SSH; the launch directory keeps only `AGENTS.md` and `docs/AGENTS/`, and every other file lives in a remote workspace, mounted in the launch directory with SSHFS. `<remote>` in its prompts means that folder. In remote mode, read [remote_prompts.md](references/remote/remote_prompts.md) and [docs/AGENTS/remote.md](references/remote/docs/AGENTS/remote.md) too, and follow the latter from the moment the connection is up.
+[references/remote/](references/remote/) adds a remote mode, which the guide lacks: the agent runs on the local machine and computes on a remote host over SSH; the launch directory keeps only `AGENTS.md` and `docs/AGENTS/`, and every other file lives in a remote workspace, mounted in the launch directory with SSHFS. `<remote>` in its prompts means that folder. In remote mode, also read [remote_prompts.md](references/remote/remote_prompts.md) and [docs/AGENTS/remote.md](references/remote/docs/AGENTS/remote.md), and follow the latter once the connection is up.
 
 1. **Machine.** Decide which case and which mode apply, and ask the user if either is unclear:
 
@@ -29,7 +29,7 @@ It also carries a remote mode, which the guide lacks, in [references/remote/](re
    | First machine | The settings in step 1 of "Set up a workspace", and in remote mode those in step 1 of "Set up a remote workspace"; the URL of the project's code repository, if there is one; the project's name and research question; whether to keep datasets, runs, and logs in a Hugging Face bucket |
    | Another machine | The URL of the workspace repository, if it is not cloned here yet, and in remote mode what "Add a remote machine" asks for; the URL of the project's code repository, if there is one |
 
-   When a prompt says to ask for one of these, use the answer you already have. Ask later only for what depends on what you find, such as confirming the machine profile, reusing an existing Notion page, or the steps that need the Notion app.
+   When a prompt asks for one of these, use the answer you have. Ask later only for what depends on what you find, such as confirming the machine profile, reusing an existing Notion page, or the steps that need the Notion app.
 3. **Tools.** Install and log in to the CLIs with [scripts/setup_clis.sh](scripts/setup_clis.sh): it needs no sudo and puts everything in the user's home directory, every command in `~/.local/bin`, on macOS and Linux alike. A tool found only elsewhere, such as a Homebrew or apt copy, shows as `elsewhere`: `install` adds a copy in `~/.local/bin` and leaves the other alone. Run it as `setup_clis.sh <check|install|login> --only <tools> [--workspace <dir>]`. Wherever a prompt asks the user to install or log in to `uv`, `ntn`, `gh`, or `hf`, use the script instead.
 
    | Mode | Where | Tools |
@@ -52,4 +52,4 @@ It also carries a remote mode, which the guide lacks, in [references/remote/](re
 
    In remote mode, `ntn` runs on the local machine and `hf` on the remote host; `.env` and `docs/notion/ids.md` are in the remote workspace, reached through the mount. Follow "Notion and Hugging Face in remote mode" in [remote_prompts.md](references/remote/remote_prompts.md) alongside the Notion and Hugging Face prompts.
 5. **Notion IDs.** After "Set up Notion", write `docs/notion/ids.md` in the workspace with the header `| Object | Title in Notion | Page ID | Database ID | Data source ID |`: one row each for the project page and the Literature Library, with their page IDs, and for Ideas, Experiments, Findings, and Papers, with their database and data source IDs; put `—` in the cells that do not apply. The research skills read it. Commit it as the workspace's git rules say.
-6. **Report.** Show the user one table of the tools and the parts, in place of the prompts' own reports: what was installed or created, what was skipped, and what is left for them, such as a login they have not approved yet, a line for their shell profile from the script's notes, or the steps that need the Notion app. Then show the README's "After setup" table, leaving out its row on reading the guide in the home directory, which does not apply here. In remote mode, say also that the mount must be up before a session starts, and give the command that remounts it.
+6. **Report.** Show the user one table of the tools and the parts, in place of the prompts' own reports: what was installed or created, what was skipped, and what is left for them, such as a login they have not approved yet, the script's notes, or the steps that need the Notion app. Then show the README's "After setup" table, leaving out its row on reading the guide in the home directory. In remote mode, also say that the mount must be up before a session starts, and give the command that remounts it.

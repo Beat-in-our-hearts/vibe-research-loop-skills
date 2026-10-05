@@ -57,7 +57,7 @@
 
 ## Git
 
-- The launch directory is the rules repository, holding `AGENTS.md` and `docs/AGENTS/`; git runs on it locally. The remote workspace root is the workspace repository, holding `docs/` and `tests/`; git runs on it on the remote host. Both follow the workspace repository rules in the git rules, each with its own remote, if any.
+- The launch directory is the rules repository, holding `AGENTS.md` and `docs/AGENTS/`; the remote workspace root is the workspace repository, holding `docs/` and `tests/`. Both follow the workspace repository rules in the git rules, each with its own remote, if any.
 - `docs/AGENTS/machine.md` and this file describe one machine and stay out of the rules repository.
 
 ## Notion
