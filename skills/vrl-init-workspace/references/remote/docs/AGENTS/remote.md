@@ -26,7 +26,7 @@
 
 | Local machine | Remote host, through SSH |
 |---|---|
-| Reading and editing files, remote ones through the mount; `ssh`; `ntn`; web requests such as paper searches; git of the launch directory | Everything else: git of the remote workspace and its repositories, Python, installs, smoke runs, training, evaluation, metrics, plotting, downloads, rclone, and resource checks |
+| Reading and editing files, remote ones through the mount; `ssh`; `ntn`; web requests such as paper searches; git of the launch directory | Everything else: git of the remote workspace and its repositories, Python, installs, smoke runs, training, evaluation, metrics, plotting, downloads, `hf`, and resource checks |
 
 - Never run a project command locally, and never point a local command at the mount to run it (`python <mount>/…`, `git -C <mount>/…`, `pip`, `chmod`, …).
 - If the remote host or the mount is unreachable, stale, or read-only, stop and report. Never fall back to the local machine, never create a local stand-in for the mount, and remount only when the user asks.

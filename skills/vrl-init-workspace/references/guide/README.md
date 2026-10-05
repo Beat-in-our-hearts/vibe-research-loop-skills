@@ -6,7 +6,7 @@ A research workflow in which AI coding agents (Claude Code, Codex) run the exper
 |---|---|
 | [`notion_guide/`](notion_guide/) | How the Notion workspace is organized: the research loop, the databases, the page templates, how agents operate it, and the Notion setup prompt |
 | [`workspace_guide/`](workspace_guide/) | The template agents build each workspace from: the setup prompts and the rule files (see [The workspace guide](#the-workspace-guide)) |
-| [`gdrive_guide/`](gdrive_guide/) | Optional: keeping datasets, runs, and logs on Google Drive, with its setup prompts |
+| [`hf_guide/`](hf_guide/) | Optional: keeping datasets, runs, and logs in a Hugging Face Storage Bucket with the `hf` CLI, with its setup prompts |
 
 Changes to the Notion system start here: edit the documents, review the diff, then sync Notion to match (see [`notion_guide/operations.md`](notion_guide/operations.md)).
 
@@ -33,7 +33,7 @@ On another machine of the same workspace, clone the guide there as well, start t
 | Workspace, first machine | "Set up a workspace" in [`workspace_guide/workspace_prompts.md`](workspace_guide/workspace_prompts.md) |
 | Workspace, another machine | "Add a machine" in [`workspace_guide/workspace_prompts.md`](workspace_guide/workspace_prompts.md) |
 | Notion | "Set up Notion" once, or "Add a machine" on another machine, in [`notion_guide/notion_prompts.md`](notion_guide/notion_prompts.md) |
-| Google Drive, only if the user wants it | "Set up Google Drive", or "Add a machine" on another machine, in [`gdrive_guide/gdrive_prompts.md`](gdrive_guide/gdrive_prompts.md) |
+| Hugging Face, only if the user wants it | "Set up Hugging Face", or "Add a machine" on another machine, in [`hf_guide/hf_prompts.md`](hf_guide/hf_prompts.md) |
 
 After setup:
 

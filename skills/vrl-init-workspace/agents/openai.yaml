@@ -1,6 +1,6 @@
 interface:
   display_name: "VRL Init Workspace"
-  short_description: "Set up the workspace, Notion, and Google Drive"
+  short_description: "Set up the workspace, Notion, and Hugging Face"
   default_prompt: "Use $vrl-init-workspace to set up this directory as a research workspace."
 policy:
   allow_implicit_invocation: false

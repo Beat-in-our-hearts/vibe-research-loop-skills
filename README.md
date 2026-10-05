@@ -4,7 +4,7 @@ Agent skills for the vibe-research-loop guide, the research workflow in which AI
 
 | Skill | What it does | Invoked by |
 |---|---|---|
-| [`vrl-init-workspace`](skills/vrl-init-workspace/SKILL.md) | Sets up the workspace, the Notion CLI and pages, and optionally Google Drive, or adds a machine to them, from the guide's setup prompts | The user only |
+| [`vrl-init-workspace`](skills/vrl-init-workspace/SKILL.md) | Sets up the workspace, the Notion CLI and pages, and optionally a Hugging Face bucket, or adds a machine to them, from the guide's setup prompts | The user only |
 | [`vrl-propose-idea`](skills/vrl-propose-idea/SKILL.md) | Writes a testable hypothesis into Ideas, for the user to approve | The user or the agent |
 | [`vrl-plan-experiment`](skills/vrl-plan-experiment/SKILL.md) | Plans the next experiment of an approved idea, for the user to approve | The user or the agent |
 | [`vrl-run-experiment`](skills/vrl-run-experiment/SKILL.md) | Launches and monitors the approved runs, then closes the experiment with its outcome | The user or the agent |
@@ -24,6 +24,12 @@ Then link every skill into the personal skill folders of both agents. A skill fo
 
 ```bash
 for d in ~/vibe-research-loop-skills/skills/*/; do n=$(basename "$d"); for t in ~/.claude/skills ~/.agents/skills; do mkdir -p "$t"; [ -e "$t/$n" ] || ln -s "${d%/}" "$t/$n"; done; done
+```
+
+The skills use four CLIs: `uv`, `ntn` (Notion), `gh` (GitHub), and `hf` (Hugging Face). `vrl-init-workspace` installs them and logs in to them; to do that without an agent, run its script in a terminal. It needs no sudo and installs into `~/.local/bin`; add `check` to see what is installed and logged in, `install --upgrade` to upgrade them to their latest releases, or `--only ntn,gh` for a subset:
+
+```bash
+bash ~/vibe-research-loop-skills/skills/vrl-init-workspace/scripts/setup_clis.sh
 ```
 
 A `git pull` in `~/vibe-research-loop-skills` updates every linked skill. Run the loop again when a pull adds a skill, and delete a skill's two links when a pull removes it. Start a new session if a skill does not show up.
