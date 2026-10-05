@@ -15,7 +15,7 @@ Everything below the line is the template body exactly as it appears in Notion. 
 <aside>
 💡 **Line of thought**
 
-*Agent (on creation): five steps of reasoning, in plain words and in this order, written before the sections. Goal: what this idea is for. Observations: what was seen, with its numbers and sources, that prompted it. Hypothesis: the guess, and why it would explain the observations. Test: the smallest test that can tell, and how it grows if the first results are promising. Decision: what result supports or rejects the guess, and what comes next either way.*
+*Agent (on creation): five steps of reasoning, in plain words and in this order, written before the sections. Goal: what this idea is for. Observations: what was seen, with its numbers and sources, that prompted it. Hypothesis: the guess, and why it would explain the observations. Test: the smallest test that can tell. Decision: what result supports or rejects the guess, and what comes next either way.*
 
 - **Goal:** *…*
 - **Observations:** *…*
@@ -56,12 +56,6 @@ Everything below the line is the template body exactly as it appears in Notion. 
 |---|---|---|---|---|
 | *…* | *…* | *…* | *…* | *…* |
 
-**Stages.** *Agent (on creation): start with the smallest stage that can show whether the idea is promising; each later stage runs only when its condition holds, as a new experiment that the user approves as usual.*
-
-| Stage | Groups and seeds | Go on when |
-|---|---|---|
-| *…* | *…* | *…* |
-
 ## 4. Budget
 
 *Agent (on creation) proposes limits from the estimate below; Human (review) sets them. Agent (after runs): update Used after every experiment. Once any limit is reached, the success criteria are met, or several experiments in a row bring no improvement, stop iterating on this idea, draft the corresponding finding, and report to a human.*
@@ -72,8 +66,8 @@ Everything below the line is the template body exactly as it appears in Notion. 
 | Compute | *…* | *0* |
 | Deadline | *…* | *—* |
 
-**Estimate.** *Agent (on creation): one row per piece of work, setup, smoke runs, and re-evaluations included. Base each estimate on a measured number, such as a log or an earlier report, scaled to the current machine described in `docs/AGENTS/machine.md`; name what limits its speed, such as the GPU, CPU data loading, or the simulator, and say whether it is measured or estimated. End with the total task time and the wall-clock time on this machine. When nothing comparable was measured, plan a short timing run and re-estimate after it.*
+**Estimate.** *Agent (on creation): one row per group, then a Total row. Single GPU: the time to train and evaluate the group, all its seeds included, on one GPU; the Total is their sum, the compute to weigh against the Compute limit. This machine: the wall-clock time with the runs spread over the GPUs of the current machine in `docs/AGENTS/machine.md`, saying how many. Basis: in a few words, the measured number each time comes from, such as a log or an earlier report, or that nothing comparable was measured and the time is a guess. Setup, smoke runs, and the detailed estimate belong to the experiment.*
 
-| Item | Basis | Estimate |
-|---|---|---|
-| *…* | *…* | *…* |
+| Item | Single GPU | This machine | Basis |
+|---|---|---|---|
+| *…* | *…* | *…* | *…* |
