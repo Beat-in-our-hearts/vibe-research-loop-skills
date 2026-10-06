@@ -4,7 +4,7 @@ A research workflow in which AI coding agents (Claude Code, Codex) run the exper
 
 | Directory | Contents |
 |---|---|
-| [`notion_guide/`](notion_guide/) | How the Notion workspace is organized: the research loop, the databases, the page templates, how agents operate it, and the Notion setup prompt |
+| [`notion_guide/`](notion_guide/) | How the Notion workspace is organized: the databases, the page templates, how agents operate it, and the Notion setup prompt |
 | [`workspace_guide/`](workspace_guide/) | The template agents build each workspace from: the setup prompts and the rule files (see [The workspace guide](#the-workspace-guide)) |
 | [`hf_guide/`](hf_guide/) | Optional: keeping datasets, runs, and logs in a Hugging Face Storage Bucket with the `hf` CLI, with its setup prompts |
 
