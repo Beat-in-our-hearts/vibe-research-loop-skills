@@ -10,6 +10,9 @@
 | Remote workspace | `<absolute path on the remote host>` |
 | Mount | `<launch directory>/<mount>`, an SSHFS view of the remote workspace |
 | tmux session | `<session>` on the remote host |
+| Check limit | `<check limit>` seconds: the local time limit of the connection check |
+| Command limit | `<command limit>` seconds: the local time limit of a remote command; with the 5 seconds of grace that `-k 5` adds, it stays below the agent's own time limit for a shell call |
+| Remote step limit | `<remote step limit>` seconds: the remote `timeout` of one step, the command limit minus 10 |
 
 ## Where files live
 
@@ -35,15 +38,16 @@
 
 One SSH master carries the whole session: every command and the mount. A command through it opens a channel in that one connection and does not log in again, so many short commands cost nothing extra.
 
-- Give every `ssh` call a local time limit: `timeout -k 5 15` for the check below, and `timeout -k 5 60` for a command. A command through a half-dead master waits on the dead connection, and neither `ConnectTimeout` nor `BatchMode` applies to a channel in an existing connection. On macOS, use `gtimeout` from Homebrew's `coreutils`; where neither exists, the master's heartbeats still end the call within about a minute.
+- Give every `ssh` call a local time limit from the table: the check limit for the check below, and the command limit for a command. A command through a half-dead master waits on the dead connection, and neither `ConnectTimeout` nor `BatchMode` applies to a channel in an existing connection. On macOS, use `gtimeout` from Homebrew's `coreutils`; where neither exists, the master's heartbeats still end the call within about a minute.
+- Keep the command limit plus 5 seconds below the agent's own time limit for a shell call, such as 2 minutes by default in Claude Code: `-k 5` ends a call that ignores the first signal 5 seconds later, and past the agent's limit, the agent moves the call to the background or gives up on it instead of stopping it. A command that surely needs longer than the command limit, but not long enough for the tmux session, may get a longer limit for that call alone, still 5 seconds short of the agent's own; anything longer runs in the tmux session.
 - Check the connection with a round trip before the first remote command of a task, and whenever a command fails or does not return. `ssh -O check` is not enough: it only sees that the local master process exists, not that the remote host answers.
 
   ```bash
-  timeout -k 5 15 ssh -n -o BatchMode=yes -o ConnectTimeout=10 -S /tmp/vrl-ssh-%C -p <port> <user>@<host> true
+  timeout -k 5 <check limit> ssh -n -o BatchMode=yes -o ConnectTimeout=10 -S /tmp/vrl-ssh-%C -p <port> <user>@<host> true
   ```
 
 - If the check fails, close the dead master, then start a new one:
-  1. Ask the master to exit: `timeout 5 ssh -S /tmp/vrl-ssh-%C -O exit -p <port> <user>@<host>`.
+  1. Ask the master to exit: `timeout -k 5 <check limit> ssh -S /tmp/vrl-ssh-%C -O exit -p <port> <user>@<host>`.
   2. If it does not exit, end its process and delete its socket, the one process you may stop without having started it. A socket left behind makes the new master skip multiplexing without failing; `ssh -G` prints the socket's real path without connecting:
 
      ```bash
@@ -60,13 +64,13 @@ One SSH master carries the whole session: every command and the mount. A command
 - Run every remote command through the master, grouping related checks into one call:
 
   ```bash
-  timeout -k 5 60 ssh -n -o BatchMode=yes -o ConnectTimeout=10 -S /tmp/vrl-ssh-%C -p <port> <user>@<host> 'cd <remote workspace> && set -a && . <remote workspace>/.env && set +a && timeout 50 <command>'
+  timeout -k 5 <command limit> ssh -n -o BatchMode=yes -o ConnectTimeout=10 -S /tmp/vrl-ssh-%C -p <port> <user>@<host> 'cd <remote workspace> && set -a && . <remote workspace>/.env && set +a && timeout <remote step limit> <command>'
   ```
 
-  - The local `timeout` ends the call when the connection is dead, `-n` gives the command no input, `BatchMode=yes` makes ssh fail at once instead of logging in again or asking for a password when the master is gone, and `timeout 50` ends a step that hangs on the remote host. In `a && b`, `timeout 50` covers only `a`: put it in front of each step that could hang, such as a download or a git command that talks to a server.
-  - Never run a command that waits for input: pass its non-interactive option, such as `-y` or `git commit -m`. Only a script piped into `bash -s`, such as the setup script, goes without `-n`, since it needs the input, and gets the time limit its task needs instead of 60 seconds.
-  - For a command too long or too nested to quote, write it as a script under `tmp/` through the mount, and run it with `timeout 50 bash <remote workspace>/tmp/<script>`.
-- Start anything that may take more than a minute detached, in its own window of the tmux session `<session>` on the remote host, and return at once with the window name and the log path; check on it later with short commands. Keep every local shell call under a minute, and never hold one open to wait.
+  - The local `timeout` ends the call when the connection is dead, `-n` gives the command no input, `BatchMode=yes` makes ssh fail at once instead of logging in again or asking for a password when the master is gone, and `timeout <remote step limit>` ends a step that hangs on the remote host, early enough to return its output before the local limit cuts the call. In `a && b`, it covers only `a`: put it in front of each step that could hang, such as a download or a git command that talks to a server.
+  - Never run a command that waits for input: pass its non-interactive option, such as `-y` or `git commit -m`. Only a script piped into `bash -s`, such as the setup script, goes without `-n`, since it needs the input, and gets the time limit its task needs instead of the command limit.
+  - For a command too long or too nested to quote, write it as a script under `tmp/` through the mount, and run it with `timeout <remote step limit> bash <remote workspace>/tmp/<script>`.
+- Start anything that may take longer than the command limit detached, in its own window of the tmux session `<session>` on the remote host, and return at once with the window name and the log path; check on it later with short commands. Keep every local shell call within the command limit, and never hold one open to wait.
 - Before reading or writing through the mount, run the round trip above and check that `mount` lists `<launch directory>/<mount>`. Neither touches the mount, while reading a mount whose connection is dead can hang, the file tools included. While the connection is down, touch nothing under the mount; repair the connection first.
 - If the mount is missing, or still fails once the connection is back, mount it again through the master, but only when the user asks. Unmount a stale one first, with `fusermount -u <launch directory>/<mount>` on Linux or `umount <launch directory>/<mount>` on macOS. The heartbeat options below matter only when sshfs falls back to a connection of its own because the master is gone; while the master is up, its own heartbeats cover the mount:
 
