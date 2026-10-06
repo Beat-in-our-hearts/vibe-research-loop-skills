@@ -1,6 +1,7 @@
 # Tracking training
 
-- Before a plan's first run starts, agree with the user on how often to report its progress, for example every 30 minutes, every epoch, or at milestones, and keep to it until they change it.
+- Before a long task starts, such as a training plan's first run, suggest scheduled reports to the user: the agent wakes itself to report, at no fixed interval, as it does when the user starts `/loop` without an interval in Claude Code. Where the agent has no such scheduler, the user asks for each report.
+- Time each report by what comes next: soon after the next evaluation, checkpoint, or task end, or when a waiting task can start; sooner while something is at risk, such as a run that may fail or a resource near its limit; further apart while nothing will change, but never so far that a failure would go unnoticed for long. End each report with the time of the next, and stop the scheduled reports once every task has ended.
 - Between reports, never hold a command open to wait; check with short commands when a report is due.
 - Write each report in the reply language: the time with its UTC offset, then one table. Its rows are the plan's tasks in plan order, then each GPU, then memory, then the storage quota.
 - Task rows:

@@ -50,7 +50,7 @@ Testable hypotheses derived from the research core. A human must tick Human Appr
 
 | Status | Outcome | Set when | Set by |
 |---|---|---|---|
-| Backlog | | The idea is created | The template |
+| Backlog | | The idea is created | The agent |
 | Testing | | Its first experiment is created | The agent |
 | Finish | Supported or Rejected | A human confirmed the finding that resolves it | The agent |
 | Parked | | The confirmed finding is inconclusive, or a human shelves the idea | The agent, or a human |
@@ -80,7 +80,7 @@ One row per experiment: a controlled comparison of baseline, treatment, and abla
 
 | Status | Outcome | Set when | Set by |
 |---|---|---|---|
-| Planned | | The experiment is created; sections 1–3 hold the plan | The template |
+| Planned | | The experiment is created; sections 1–3 hold the plan | The agent |
 | Running | | The first run is launched, together with Started | The agent |
 | Finish | Done | Every run in the approved plan finished; a result that misses the success criteria is still Done | The agent |
 | Finish | Failed | The plan could not be completed: a crash, out of memory, or a divergence that could not be fixed | The agent |

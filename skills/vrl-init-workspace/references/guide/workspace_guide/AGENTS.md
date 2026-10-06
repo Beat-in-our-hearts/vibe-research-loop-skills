@@ -18,4 +18,4 @@ The files below hold the basic rules. If one disagrees with this file, this file
 | @docs/AGENTS/environment.md | Setting an environment variable, or installing a tool |
 | @docs/AGENTS/git.md | Running a git command |
 | @docs/AGENTS/log_template.md | Launching a long-running command, or reading a log |
-| @docs/AGENTS/tracking_training.md | Launching a training plan, or reporting its progress |
+| @docs/AGENTS/tracking_training.md | Launching a training plan or another long task, or reporting its progress |

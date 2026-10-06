@@ -3,10 +3,9 @@
 | | |
 |---|---|
 | Database | Findings |
-| Template | Create an empty template in the database in the Notion app (New ▾ → + New template), then fill its body with the content below |
 | Default properties | Status = Under Review |
 
-Everything below the line is the template body exactly as it appears in Notion. Text in *italics* is gray in Notion: those lines are instructions. Each starts with who acts and when — Agent (on creation), Agent (during runs), Agent (after runs), Agent (after review), or Human (review) — and says where the content comes from. This file is the source of truth; the rules for syncing it to Notion are in [`../operations.md`](../operations.md).
+Everything below the line is the body of every new page in the database: the agent that creates a page writes it in, with the default properties above, so the database needs no template in Notion. The opening quote is for that agent, who follows it and leaves it out of the page. Text in *italics* is gray italic text in Notion: those lines are instructions. Each starts with who acts and when — Agent (on creation), Agent (during runs), Agent (after runs), Agent (after review), or Human (review) — and says where the content comes from.
 
 ---
 

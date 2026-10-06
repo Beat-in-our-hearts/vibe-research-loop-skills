@@ -91,8 +91,8 @@ Green steps are what the agent does, each with the Notion status it leaves behin
 
 The agent also picks a research skill on its own when a request matches its description; `vrl-init-workspace` runs only when the user invokes it.
 
-- Run `vrl-init-workspace` first, once per machine. It carries its own copy of the guide, so the guide never needs to be cloned. The research skills rely on the workspace's rules and on the Notion templates, whose gray instructions say what goes where; once they fill a section, they delete its instructions from the page and keep only the content.
-- The research skills use the English names of the Notion databases and properties, the ones `vrl-init-workspace` creates.
+- Run `vrl-init-workspace` first, once per machine. It carries its own copy of the guide, so the guide never needs to be cloned. The research skills rely on the workspace's rules and on the page templates in that guide, so the Notion databases need no templates of their own: each new page starts from its database's template, whose gray instructions say what goes where. Once they fill a section, they delete its instructions from the page and keep only the content.
+- The research skills write Notion pages in the reply language, unless the workspace's language rules set another one for Notion, but use the English names of the Notion databases and properties, the ones `vrl-init-workspace` creates.
 - Start the agent from the workspace root; the research skills stop anywhere else.
 - The research skills keep the IDs of the Notion project page and databases in the workspace's `docs/notion/ids.md`.
 
