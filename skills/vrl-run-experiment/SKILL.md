@@ -1,17 +1,17 @@
 ---
 name: vrl-run-experiment
-description: Launch and monitor an approved experiment's runs in a vibe-research-loop workspace, keep its Notion page's logs, status, and progress current, report at the agreed interval, and close it with its outcome. Use when the user asks to start, resume, check on, or monitor an experiment's runs.
+description: Launch and monitor an approved experiment's runs in a vibe-research-loop workspace, keep its Notion page's logs, status, and progress current, report on a schedule timed by what the runs do next, and close it with its outcome. Use when the user asks to start, resume, check on, or monitor an experiment's runs.
 ---
 
 # Run an experiment
 
 1. **Check.** Read the Experiments page live: Human Approved must be checked, Status must be Planned or Running, and the plan file must match sections 1–3; otherwise tell the user and stop. Run only the run-table rows assigned to this machine, on free GPUs.
-2. **Interval.** Before the first run, agree with the user how often to report progress.
+2. **Reports.** Before the first run, suggest scheduled reports to the user, at no fixed interval: in Claude Code, they start `/loop` with no interval and a request such as "check on <ID> and report", and you time each report yourself; without such a scheduler, the user asks for each one. Time each report by what comes next: soon after the next evaluation, checkpoint, or run end, or when a waiting run can start; sooner while something is at risk, such as a run that may fail or a resource near its limit; further apart while nothing will change, but never so far that a failure would go unnoticed for long. End each report with the time of the next.
 3. **Launch.** Go through the post-approval steps of the Detail plan in section 2, in order; if a step's Go on when condition fails, stop there and report to the user. Start each run with its launch command from the plan, its log at `logs/<date>-<name>/<run>.log`, and its outputs in `runs/<date>-<name>/<run>/`. In remote mode, start it detached in its own window of the remote tmux session, and name that window in the log's `session` line. Add the launch commit to the Code row of section 3, and save `git diff` in the run folder if the checkout is dirty. With the first run, set Status to Running and Started to its start time.
-4. **Monitor.** At every checkpoint or evaluation, update section 4, and Est. Hours when the ETA drifts more than 20%; report to the user at the agreed interval.
+4. **Monitor.** At every checkpoint or evaluation, update section 4, and Est. Hours when the ETA drifts more than 20%; report to the user at each time step 2 sets.
    - Restart a run that stopped for an outside reason, such as a node failure or preemption, with the same config, and add an anomaly row.
    - A fix that changes the code, a config, or the plan needs a new approval: stop the affected runs, record the change under Deviations, and ask the user.
-5. **Close.** Once every run of the plan has ended, on every machine, set Status to Finish and Outcome as below, and tell the user.
+5. **Close.** Once every run of the plan has ended, on every machine, set Status to Finish and Outcome as below, stop the scheduled reports, and tell the user.
 
    | Outcome | When |
    |---|---|
