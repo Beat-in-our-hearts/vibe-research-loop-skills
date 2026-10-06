@@ -4,7 +4,7 @@ Prompts for AI coding agents that set up or change the Notion side of the resear
 
 ## Set up Notion
 
-Build what [`overview.md`](overview.md) and [`databases.md`](databases.md) describe, with the names this guide uses. Create no templates in the databases: the research skills write each new page from [`templates/`](templates/). Never overwrite an existing page: if one with the same title exists, show it to the user and ask, unless a step below says to reuse it.
+Build what [`overview.md`](overview.md) and [`databases.md`](databases.md) describe. Keep in English the names this guide gives, which agents look up: the Literature Library's title, and the names of the databases, their properties and views, and the options of their select and status properties. Write all other text, such as the Research Core's headings and the admission rules, in the language the workspace's language rules set for Notion pages, or else in the reply language. Create no templates in the databases: the research skills write each new page from [`templates/`](templates/). Never overwrite an existing page: if one with the same title exists, show it to the user and ask, unless a step below says to reuse it.
 
 1. **Connection.** Check that the `ntn` CLI reaches the user's Notion workspace. If it is missing or not logged in, ask the user to install it and log in themselves; never handle their token.
 2. **Project.** Ask the user for the project's name and its research question, and wait for the answer; the rest of the Research Core can stay empty for them to fill in later.

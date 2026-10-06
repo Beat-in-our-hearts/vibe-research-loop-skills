@@ -10,7 +10,7 @@ The workspace is the directory you were launched from; `<guide>` is the root of 
 
    | Setting | Default | Covers |
    |---|---|---|
-   | Reply language | Simplified Chinese | Every message to the user |
+   | Reply language | Simplified Chinese | Every message to the user, and the Notion pages |
    | Working language | English | Reasoning and planning, and every file you write, the rule files included |
    | Code folder | `main_repo` | The folder the project's code repository is cloned into, for example named after the repository |
    | Git level for the code | Manual commit | Whether you commit and push code on your own: manual commit, auto commit, or auto push |
