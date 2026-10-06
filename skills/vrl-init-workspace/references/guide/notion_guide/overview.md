@@ -13,7 +13,7 @@ Notion is the knowledge memory of the research loop. Each research project is on
 | Literature Library | Notion workspace top level, shared by all projects | Curated papers | [Literature Library](#literature-library) below |
 | Papers | inline on the Literature Library page | One row per paper | [`databases.md`](databases.md#papers-literature-library) · [`templates/papers.md`](templates/papers.md) |
 
-Page, database, and template IDs differ in every Notion workspace, so none are recorded here. Agents find them by title with `POST v1/search` (see [`operations.md`](operations.md)). If you want to pin your own IDs, keep them outside this repository, for example in a document under `docs/` of your own agent workspace, built from [`workspace_guide/`](../workspace_guide/).
+Page and database IDs differ in every Notion workspace, so none are recorded here. Agents find them by title with `POST v1/search` (see [`operations.md`](operations.md)). If you want to pin your own IDs, keep them outside this repository, for example in a document under `docs/` of your own agent workspace, built from [`workspace_guide/`](../workspace_guide/).
 
 ## Project page
 
@@ -91,10 +91,12 @@ An agent can do all of this by following [`notion_prompts.md`](notion_prompts.md
 | 2. Literature Library | Create a top-level page with the admission rules above and an inline Papers database ([`databases.md`](databases.md#papers-literature-library)) |
 | 3. Project page | Create a top-level page with the three sections above: the Research Core, the loop diagram from [`research-loop.md`](research-loop.md), and the Knowledge Base |
 | 4. Databases | Create Ideas, Experiments, and Findings inline on the project page, with the properties, relations, and views in [`databases.md`](databases.md) |
-| 5. Templates | In each database, create an empty template in the Notion app (New ▾ → + New template), then fill its body from [`templates/`](templates/) |
+| 5. Notion app | Turn on Full width in each database (⋯ → Customize layout → Page settings → Full width), and set your Notion time zone to the project's |
 | 6. Research Core | Write your research question and its framing |
 
-For every further project, duplicate the project page: its inline databases, views, and templates come with it.
+The databases need no templates in Notion: agents write each new page from [`templates/`](templates/), with its default properties.
+
+For every further project, duplicate the project page: its inline databases and views come with it.
 
 ## Reviewing a page
 
