@@ -48,10 +48,10 @@ One SSH master carries the whole session: every command and the mount. A command
 
 - If the check fails, close the dead master, then start a new one:
   1. Ask the master to exit: `timeout -k 5 <check limit> ssh -S /tmp/vrl-ssh-%C -O exit -p <port> <user>@<host>`.
-  2. If it does not exit, end its process and delete its socket, the one process you may stop without having started it. A socket left behind makes the new master skip multiplexing without failing; `ssh -G` prints the socket's real path without connecting:
+  2. If it does not exit, end its process and delete its socket, the one process you may stop without having started it. Anchor the `pkill` pattern at both ends, as below: `pkill -f` matches whole command lines, and the shell that runs `pkill` holds the pattern in its own, so an unanchored pattern ends that shell too. Escape the dots of an IP address in `<host>` as `\.`. A socket left behind makes the new master skip multiplexing without failing; `ssh -G` prints the socket's real path without connecting:
 
      ```bash
-     pkill -f -- 'ssh -MNf .*-p <port> <user>@<host>'
+     pkill -f -- '^ssh -MNf .*-p <port> <user>@<host>$'
      rm -f "$(ssh -G -o ControlPath=/tmp/vrl-ssh-%C -p <port> <user>@<host> | awk '/^controlpath /{print $2}')"
      ```
 
