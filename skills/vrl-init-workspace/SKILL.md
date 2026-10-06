@@ -10,6 +10,8 @@ disable-model-invocation: true
 
 [references/remote/](references/remote/) adds a remote mode, which the guide lacks: the agent runs on the local machine and computes on a remote host over SSH; the launch directory keeps only `AGENTS.md` and `docs/AGENTS/`, and every other file lives in a remote workspace, mounted in the launch directory with SSHFS. `<remote>` in its prompts means that folder. In remote mode, also read [remote_prompts.md](references/remote/remote_prompts.md) and [docs/AGENTS/remote.md](references/remote/docs/AGENTS/remote.md), and follow the latter once the connection is up.
 
+At the start, run `bash <this skill's folder>/scripts/check_update.sh`. If it reports a newer release, tell the user, with the update command it prints, and ask whether to update before setting up; never update the skills unless the user asks.
+
 1. **Machine.** Decide which case and which mode apply, and ask the user if either is unclear:
 
    | Situation | Case |
