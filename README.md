@@ -118,7 +118,7 @@ When the machine you run the agent on has no GPU and jobs run on a remote host o
 | Commands | File edits, `ssh`, `ntn`, web requests, git of the rules | Everything else, through one SSH master and a tmux session |
 | Git | The rules repository | The workspace repository |
 
-The research skills switch to it whenever `docs/AGENTS/remote.md` exists in the launch directory. Mount the remote workspace before starting a session there.
+The remote host is named by an alias in your `~/.ssh/config`, such as `gpu-box`, so a jump host or a key works as it does in your own `ssh`; if you have none, the setup adds one with your approval. The research skills switch to remote mode whenever `docs/AGENTS/remote.md` exists in the launch directory. Mount the remote workspace before starting a session there.
 
 ## Compatibility
 
