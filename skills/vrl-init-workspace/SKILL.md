@@ -38,7 +38,7 @@ At the start, run `bash <this skill's folder>/scripts/check_update.sh`. If it re
    |---|---|---|
    | Local | This machine | `uv`, `ntn`, `gh`, and `hf` if the user wants the bucket |
    | Remote | This machine | `ntn`, `gh` |
-   | Remote | The remote host, once the SSH master is up: right after the Connection step of "Set up a remote workspace" or "Add a remote machine", run through the master as `ssh -o BatchMode=yes -o ConnectTimeout=10 -S /tmp/vrl-ssh-%C -p <port> <user>@<host> 'bash -s -- <command> --only <tools>' < scripts/setup_clis.sh` | `uv`, `gh`, and `hf` if the user wants the bucket |
+   | Remote | The remote host, once the SSH master is up: right after the Connection step of "Set up a remote workspace" or "Add a remote machine", run through the master as `ssh -o BatchMode=yes -o ConnectTimeout=10 -S /tmp/vrl-ssh-%C <alias> 'bash -s -- <command> --only <tools>' < scripts/setup_clis.sh` | `uv`, `gh`, and `hf` if the user wants the bucket |
 
    - Run `check` first and show the user its table; run `install` for what is missing only after they agree.
    - Run `login` in the background, since `gh` and `hf` wait until the user approves. Without a terminal, each login prints a URL and a one-time code: pass them to the user at once, as `hf`'s code expires in 5 minutes, and tell them to open the URL in any browser and check the code. Never ask for a token or pass one to a command.

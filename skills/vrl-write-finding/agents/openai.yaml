@@ -1,4 +1,4 @@
 interface:
   display_name: "VRL Write Finding"
-  short_description: "Draft a finding from finished experiments"
-  default_prompt: "Use $vrl-write-finding to draft the finding for this idea's experiments."
+  short_description: "Draft a finding from a verified result"
+  default_prompt: "Use $vrl-write-finding to write up this verified result as a finding."

@@ -5,7 +5,7 @@
 | Item | Value |
 |---|---|
 | Local machine | <short name, and what it can run: e.g. 2 cores, 4 GB, no GPU> |
-| Remote host | `ssh -p <port> <user>@<host>` |
+| Remote host | `ssh <alias>`: the `Host <alias>` entry in the local `~/.ssh/config`, which holds the host name, user, port, and any jump host |
 | Control socket | `/tmp/vrl-ssh-%C` |
 | Remote workspace | `<absolute path on the remote host>` |
 | Mount | `<launch directory>/<mount>`, an SSHFS view of the remote workspace |
@@ -43,28 +43,28 @@ One SSH master carries the whole session: every command and the mount. A command
 - Check the connection with a round trip before the first remote command of a task, and whenever a command fails or does not return. `ssh -O check` is not enough: it only sees that the local master process exists, not that the remote host answers.
 
   ```bash
-  timeout -k 5 <check limit> ssh -n -o BatchMode=yes -o ConnectTimeout=10 -S /tmp/vrl-ssh-%C -p <port> <user>@<host> true
+  timeout -k 5 <check limit> ssh -n -o BatchMode=yes -o ConnectTimeout=10 -S /tmp/vrl-ssh-%C <alias> true
   ```
 
 - If the check fails, close the dead master, then start a new one:
-  1. Ask the master to exit: `timeout -k 5 <check limit> ssh -S /tmp/vrl-ssh-%C -O exit -p <port> <user>@<host>`.
-  2. If it does not exit, end its process and delete its socket, the one process you may stop without having started it. Anchor the `pkill` pattern at both ends, as below: `pkill -f` matches whole command lines, and the shell that runs `pkill` holds the pattern in its own, so an unanchored pattern ends that shell too. Escape the dots of an IP address in `<host>` as `\.`. A socket left behind makes the new master skip multiplexing without failing; `ssh -G` prints the socket's real path without connecting:
+  1. Ask the master to exit: `timeout -k 5 <check limit> ssh -S /tmp/vrl-ssh-%C -O exit <alias>`.
+  2. If it does not exit, end its process and delete its socket, the one process you may stop without having started it. Anchor the `pkill` pattern at both ends, as below: `pkill -f` matches whole command lines, and the shell that runs `pkill` holds the pattern in its own, so an unanchored pattern ends that shell too. Escape any dot in `<alias>` as `\.`. A socket left behind makes the new master skip multiplexing without failing; `ssh -G` prints the socket's real path without connecting:
 
      ```bash
-     pkill -f -- '^ssh -MNf .*-p <port> <user>@<host>$'
-     rm -f "$(ssh -G -o ControlPath=/tmp/vrl-ssh-%C -p <port> <user>@<host> | awk '/^controlpath /{print $2}')"
+     pkill -f -- '^ssh -MNf .* <alias>$'
+     rm -f "$(ssh -G -o ControlPath=/tmp/vrl-ssh-%C <alias> | awk '/^controlpath /{print $2}')"
      ```
 
   3. Start the new master. Its heartbeats make it exit within about 45 seconds of the connection dying, instead of hanging on. If logging in asks for a password, a passphrase, or a second factor, ask the user to run this command in their own terminal, and wait.
 
      ```bash
-     ssh -MNf -o ControlMaster=yes -o ControlPersist=4h -o ControlPath=/tmp/vrl-ssh-%C -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ConnectTimeout=10 -p <port> <user>@<host>
+     ssh -MNf -o ControlMaster=yes -o ControlPersist=4h -o ControlPath=/tmp/vrl-ssh-%C -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ConnectTimeout=10 <alias>
      ```
 
 - Run every remote command through the master, grouping related checks into one call:
 
   ```bash
-  timeout -k 5 <command limit> ssh -n -o BatchMode=yes -o ConnectTimeout=10 -S /tmp/vrl-ssh-%C -p <port> <user>@<host> 'cd <remote workspace> && set -a && . <remote workspace>/.env && set +a && timeout <remote step limit> <command>'
+  timeout -k 5 <command limit> ssh -n -o BatchMode=yes -o ConnectTimeout=10 -S /tmp/vrl-ssh-%C <alias> 'cd <remote workspace> && set -a && . <remote workspace>/.env && set +a && timeout <remote step limit> <command>'
   ```
 
   - The local `timeout` ends the call when the connection is dead, `-n` gives the command no input, `BatchMode=yes` makes ssh fail at once instead of logging in again or asking for a password when the master is gone, and `timeout <remote step limit>` ends a step that hangs on the remote host, early enough to return its output before the local limit cuts the call. In `a && b`, it covers only `a`: put it in front of each step that could hang, such as a download or a git command that talks to a server.
@@ -81,9 +81,10 @@ One SSH master carries the whole session: every command and the mount. A command
 - If the mount is missing, or still fails once the connection is back, mount it again through the master, but only when the user asks. Unmount a stale one first, with `fusermount -u <launch directory>/<mount>` on Linux or `umount <launch directory>/<mount>` on macOS. The heartbeat options below matter only when sshfs falls back to a connection of its own because the master is gone; while the master is up, its own heartbeats cover the mount:
 
   ```bash
-  sshfs -p <port> -o ssh_command='ssh -S /tmp/vrl-ssh-%C -o BatchMode=yes -o ControlMaster=no' -o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3,idmap=user <user>@<host>:<remote workspace> <launch directory>/<mount>
+  sshfs -o ssh_command='ssh -S /tmp/vrl-ssh-%C -o BatchMode=yes -o ControlMaster=no' -o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3,idmap=user <alias>:<remote workspace> <launch directory>/<mount>
   ```
 
+- Name the host only by `<alias>`, and keep the multiplexing and heartbeat options on the command line, as above, rather than in the alias's entry, which the user's own `ssh` sessions share. Change that entry only when the user asks.
 - Keep host-key checking on, and stop on a changed host key. Never print, copy, or upload keys, tokens, or passwords.
 - Stop only processes you started.
 

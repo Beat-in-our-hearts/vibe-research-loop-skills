@@ -19,7 +19,7 @@ Every entry has an ID: a short abbreviation that a human can read at a glance. I
 |---|---|---|---|
 | Experiments | Idea | Ideas | One-way relation: the idea under test |
 | Ideas | Related | Findings, Papers, Experiments | Text holding @mentions of the finding, paper, and earlier experiment pages the idea comes from |
-| Findings | Related | Ideas, Experiments | Text holding @mentions of the idea and experiment pages behind the claim |
+| Findings | Related | Ideas, Experiments | Text holding @mentions of the idea and experiment pages behind the claim, if any |
 
 A Notion relation can point to only one database, so Related is a text property holding @mentions: one column can reference several databases, every mentioned page gets a backlink, and the Literature Library needs no property of its own.
 
@@ -108,14 +108,14 @@ Ideas has no Experiments column because the relation is one-way; the By Idea vie
 
 ## Findings
 
-Verified conclusions. AI drafts them; a human confirms before they count as knowledge. The page title is the claim.
+Verified conclusions: what an idea's experiments showed, or a result that stands on its own, such as a performance test or a code optimization. AI drafts them; a human confirms before they count as knowledge. The page title is the claim.
 
 | Property | Type | Values | Meaning |
 |---|---|---|---|
 | Name | title | | The claim in short, no broader than the evidence, at most 15 words, or 20 characters in Chinese; the one-sentence conclusion states it in full |
 | ID | text | e.g. `warmup-gain` | Short, readable handle |
 | Status | status | Under Review (to-do) · Confirmed · Overturned (complete) | A new finding starts Under Review; only a human sets Confirmed or Overturned |
-| Related | text | @mentions of idea and experiment pages | The idea it resolves and the experiments behind it |
+| Related | text | @mentions of idea and experiment pages | The idea it resolves and the experiments behind it, if any |
 | Created | created time | | When the finding was drafted; set by Notion |
 
 | View | Type | Shows |

@@ -10,14 +10,24 @@ Follow "Set up a workspace" in `<guide>/workspace_guide/workspace_prompts.md`, w
 
    | Setting | Default | Covers |
    |---|---|---|
-   | SSH target | — | `ssh -p <port> <user>@<host>`; the user sets up the login and keys themselves |
+   | SSH alias | — | A `Host` entry in the local `~/.ssh/config` that reaches the remote host, used as `ssh <alias>`; if the user has none, step 2 adds one. The user sets up the login and keys themselves |
    | Remote workspace | — | The absolute path on the remote host that holds every file but the rules; it must exist |
    | Mount | `hpc_workspace` | The folder in the launch directory where the remote workspace is mounted with SSHFS |
    | tmux session | `vrl` | The remote tmux session for long-running commands |
    | Rules remote | None | A private remote for the rules repository, besides the workspace remote |
    | Existing host rules | None | Rule files that already describe this host or this user's habits, such as an older `AGENTS.md`, to carry over |
 
-2. **Connection.** Before creating anything, start or reuse the SSH master as in `<remote>/docs/AGENTS/remote.md`, and check in one call: `hostname`; `whoami`; that the remote workspace exists, is writable, and lists nothing the user did not expect; that `git` and `tmux` are on the remote host; and whether git has a user name and email there. Check that `sshfs` is on the local machine. If anything is missing, ask the user; never install on either side without their approval. If git has no identity on the remote host, ask the user which name and email to commit under, and set them in the workspace repository only. From the time that call took, set the time limits of `docs/AGENTS/remote.md`: the check limit at five times that time, and at least 15 seconds; the command limit at 60 seconds, kept at least 5 seconds below the agent's own time limit for a shell call; and the remote step limit at the command limit minus 10 seconds. Tell the user the three values, which they may change. Then set up the remote host's CLIs as the skill's Tools step says.
+2. **Connection.** If the user has no alias yet, ask for the host name, user, port, and any jump host, show them the entry below, and with their approval append it to the local `~/.ssh/config`, creating the file with mode 600 if it does not exist. Never change an entry that is already there. Check that `ssh -G <alias>` resolves the host name, user, and port, which it does without connecting.
+
+   ```
+   Host <alias>
+       HostName <host>
+       User <user>
+       Port <port>
+       # ProxyJump <jump host>, only if the host is reached through one
+   ```
+
+   Before creating anything, start or reuse the SSH master as in `<remote>/docs/AGENTS/remote.md`, and check in one call: `hostname`; `whoami`; that the remote workspace exists, is writable, and lists nothing the user did not expect; that `git` and `tmux` are on the remote host; and whether git has a user name and email there. Check that `sshfs` is on the local machine. If anything is missing, ask the user; never install on either side without their approval. If git has no identity on the remote host, ask the user which name and email to commit under, and set them in the workspace repository only. From the time that call took, set the time limits of `docs/AGENTS/remote.md`: the check limit at five times that time, and at least 15 seconds; the command limit at 60 seconds, kept at least 5 seconds below the agent's own time limit for a shell call; and the remote step limit at the command limit minus 10 seconds. Tell the user the three values, which they may change. Then set up the remote host's CLIs as the skill's Tools step says.
    - If the remote host reaches some services only through a proxy, such as GitHub or model hubs, ask the user how to turn it on, record it in `docs/AGENTS/machine.md` in step 5, and start the tmux session from a shell where it is on, so that every window inherits it.
 3. **Folders.** In place of step 2 of the guide's prompt:
    - On the remote host, create the folders of the tree in `<guide>/workspace_guide/docs/AGENTS/file_structure.md` other than `docs/AGENTS/` and those named with a `<placeholder>`, and make the remote workspace a git repository on branch `main` with this `.gitignore`, adding the workspace remote if the user gave one:

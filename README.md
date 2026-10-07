@@ -9,7 +9,7 @@ Agent skills for the vibe-research-loop guide, the research workflow in which AI
 | [`vrl-plan-experiment`](skills/vrl-plan-experiment/SKILL.md) | Plans the next experiment of an approved idea, for the user to approve | The user or the agent |
 | [`vrl-run-experiment`](skills/vrl-run-experiment/SKILL.md) | Launches and monitors the approved runs, then closes the experiment with its outcome | The user or the agent |
 | [`vrl-analyze-results`](skills/vrl-analyze-results/SKILL.md) | Fills the results and conclusion of a finished experiment | The user or the agent |
-| [`vrl-write-finding`](skills/vrl-write-finding/SKILL.md) | Drafts a finding for the user to confirm, then closes the idea | The user or the agent |
+| [`vrl-write-finding`](skills/vrl-write-finding/SKILL.md) | Drafts a finding from an idea's experiments, or from any verified result such as a performance test, for the user to confirm, then closes the idea it resolves, if any | The user or the agent |
 | [`vrl-search-papers`](skills/vrl-search-papers/SKILL.md) | Adds at most three papers per search to the Literature Library | The user or the agent |
 
 ## Install in one prompt
@@ -118,7 +118,7 @@ When the machine you run the agent on has no GPU and jobs run on a remote host o
 | Commands | File edits, `ssh`, `ntn`, web requests, git of the rules | Everything else, through one SSH master and a tmux session |
 | Git | The rules repository | The workspace repository |
 
-The research skills switch to it whenever `docs/AGENTS/remote.md` exists in the launch directory. Mount the remote workspace before starting a session there.
+The remote host is named by an alias in your `~/.ssh/config`, such as `gpu-box`, so a jump host or a key works as it does in your own `ssh`; if you have none, the setup adds one with your approval. The research skills switch to remote mode whenever `docs/AGENTS/remote.md` exists in the launch directory. Mount the remote workspace before starting a session there.
 
 ## Compatibility
 
