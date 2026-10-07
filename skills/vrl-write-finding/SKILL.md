@@ -1,17 +1,19 @@
 ---
 name: vrl-write-finding
-description: Draft a finding from an idea's finished experiments in a vibe-research-loop workspace, with a claim no broader than its evidence and publication-style figures, tables, and analysis on the Findings page in Notion; once the user confirms it, close the idea and log any change of direction. Use when an idea's testing ends, or when the user asks to write up or close a result.
+description: Draft a finding in a vibe-research-loop workspace - a verified result worth keeping, from an idea's finished experiments or from any other measurement, such as a performance test or a code optimization - with a claim no broader than its evidence and publication-style figures, tables, and analysis on the Findings page in Notion; once the user confirms it, close the idea it resolves, if any, and log any change of direction. Use when an idea's testing ends, when a verified result such as a benchmark or a tuning is worth recording, or when the user asks to write up or close a result.
 ---
 
 # Write a finding
 
-A finding reads like the experiments section of a paper. Most findings are negative; record a failure as carefully as a success. It counts only once the user confirms it.
+A finding records a verified result: what an idea's experiments showed, or a result that stands on its own, such as a performance test or a code optimization, with no idea or experiment behind it. It reads like the experiments section of a paper. Most findings are negative; record a failure as carefully as a success. It counts only once the user confirms it.
 
-1. **Evidence.** Collect the idea and the experiments with Outcome Done that the claim rests on, with their result files and plotting scripts. Take every number from them as it is; never recompute it.
-2. **Page.** Create the page in Findings with Name (the claim in short, no broader than the evidence, at most 15 words, or 20 characters in Chinese; the one-sentence conclusion states it in full), ID (lowercase English words joined by hyphens, at most 24 characters, unique in Findings, never renamed), and Related (@mentions of the idea and the experiments). Status stays Under Review.
+1. **Evidence.** Collect what the claim rests on, with its result files and plotting scripts, and take every number from them as it is; never recompute it:
+   - From the research loop: the idea and its experiments whose results can be trusted, those with Outcome Done, or Failed where the failure is itself the result, such as running out of memory; never one with Outcome Invalid.
+   - Otherwise: the measurements themselves, such as a benchmark or a profile, each with the commit, the machine, and the command that produced it, against a baseline measured the same way on the same machine, and repeated where its numbers vary. Keep their raw results and logs with the finding's figures, under `runs/findings/<date>-<id>/`.
+2. **Page.** Create the page in Findings with Name (the claim in short, no broader than the evidence, at most 15 words, or 20 characters in Chinese; the one-sentence conclusion states it in full), ID (lowercase English words joined by hyphens, at most 24 characters, unique in Findings, never renamed), and Related (@mentions of the idea and the experiments, if any). Status stays Under Review.
 3. **Body.** Fill sections 1–3: at least one table and two figures, saved as PDF and PNG with their scripts under `runs/findings/<date>-<id>/`, each followed by its analysis; then the one-sentence conclusion, supported, rejected, or inconclusive, with its conditions and confidence.
 4. **Report.** Show the user the page link, the claim, and the conclusion, and ask them to review it.
-5. **After review.** Once the page's Status reads Confirmed, update the idea as below. If the finding calls for a change of direction, add `YYYY-MM-DD — change — @finding` to the Direction Log in the project's Research Core. If it replaces an earlier finding, tell the user, who sets that one to Overturned.
+5. **After review.** Once the page's Status reads Confirmed, update the idea it resolves, if any, as below. If the finding calls for a change of direction, add `YYYY-MM-DD — change — @finding` to the Direction Log in the project's Research Core. If it replaces an earlier finding, tell the user, who sets that one to Overturned.
 
    | Conclusion | Idea |
    |---|---|

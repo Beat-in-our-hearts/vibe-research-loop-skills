@@ -9,15 +9,16 @@ Everything below the line is the body of every new page in the database: the age
 
 ---
 
-> A finding reads like the experiments section of a paper: figures, tables, and written analysis, all three. Most findings are failures or negative results — research is countless failures and the occasional success, and every failure deserves a careful record. The page title is the claim; AI drafts it, and it counts only once a human confirms it. Start by setting a short, unique ID, e.g. `warmup-gain`.
+> A finding reads like the experiments section of a paper: figures, tables, and written analysis, all three. Most findings are failures or negative results — research is countless failures and the occasional success, and every failure deserves a careful record. It may rest on an idea's experiments, or stand on its own, such as a performance test or a code optimization. The page title is the claim; AI drafts it, and it counts only once a human confirms it. Start by setting a short, unique ID, e.g. `warmup-gain`.
 
 ## 1. Evidence sources
 
-*Agent (after runs): list the experiments this finding rests on and @mention them in Related; give the location of the result files and plotting scripts behind the figures and tables. Take every number from these sources as it is; never recompute it.*
+*Agent (after runs): list what this finding rests on: the experiments, @mentioned in Related, or, for a result outside the research loop such as a performance test, each measurement with the commit, the machine, and the command that produced it; then where the result files and plotting scripts are. Write — in a row that does not apply. Take every number from these sources as it is; never recompute it.*
 
 | Source | Location |
 |---|---|
 | Experiments | *…* |
+| Measurements | *…* |
 | Result files | *…* |
 | Plotting scripts | *…* |
 
@@ -39,7 +40,7 @@ Everything below the line is the body of every new page in the database: the age
 
 ## 3. One-sentence conclusion
 
-*Agent (after runs): state the conclusion in one sentence — supported, rejected, or inconclusive, and the conditions under which it holds — with the confidence (high, medium, or low) in brackets at the end; a failed result states what it ruled out. If the direction should change or an earlier finding is replaced, say so after the sentence. Human (review): check the evidence sources and the numbers, then set Status to Confirmed. Agent (after review) then sets the resolved idea's Status to Finish with Outcome Supported or Rejected, or to Parked if the conclusion is inconclusive, and adds the Direction Log entry, if any; setting an overturned finding to Overturned stays with a human.*
+*Agent (after runs): state the conclusion in one sentence — supported, rejected, or inconclusive, and the conditions under which it holds — with the confidence (high, medium, or low) in brackets at the end; a failed result states what it ruled out. If the direction should change or an earlier finding is replaced, say so after the sentence. Human (review): check the evidence sources and the numbers, then set Status to Confirmed. Agent (after review) then, if the finding resolves an idea, sets that idea's Status to Finish with Outcome Supported or Rejected, or to Parked if the conclusion is inconclusive, and adds the Direction Log entry, if any; setting an overturned finding to Overturned stays with a human.*
 
 | Item | Content |
 |---|---|
