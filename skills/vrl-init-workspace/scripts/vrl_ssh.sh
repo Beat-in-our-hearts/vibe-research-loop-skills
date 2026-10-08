@@ -1,71 +1,97 @@
 #!/usr/bin/env bash
-# Reach the remote host of a remote-mode workspace through one SSH master, with the time limits, options,
-# and exit marker that docs/AGENTS/remote.md asks for, so that no call hangs and no command needs quoting.
-#
-# Usage: vrl_ssh.sh <action> <alias> [options] [-- <command> | -- <script> [args...]]
-#
-#   resolve   Print the host name, user, port, and jump host that the alias resolves to, without connecting.
-#   check     Make one round trip through the master and print how long it took. With --mount, also check
-#             that `mount` lists that folder, without touching the folder itself.
-#   connect   check; if it fails, close the dead master (ask it to exit, or else end its process and delete
-#             its socket), start a new one, and check again. Never asks for a password: if the login needs
-#             one, a passphrase, or a second factor, it prints the command for the user to run in their own
-#             terminal, and exits 3.
-#   run       Run a shell command in the remote workspace, with its .env loaded. The command is everything
-#             after `--`, sent unchanged to a remote bash on its standard input, so it needs no quoting of
-#             its own and may span several lines; the command itself gets no input.
-#   script    Run a local script on the remote host, with the arguments after its path: a .py file with
-#             python3, anything else with bash. With --workspace, it runs in the remote workspace with its
-#             .env loaded; without, in the remote home directory, as the setup script needs.
-#   mount     Mount the remote workspace at --mount with SSHFS through the master, after unmounting a stale
-#             mount there.
-#
-# Options:
-#   --workspace DIR  The remote workspace, as an absolute path. run needs it.
-#   --mount DIR      The local mount folder, for check and mount.
-#   --limit S        The local time limit of the call, in seconds (default: 15 for check and connect, 30 for
-#                    mount, 60 otherwise; 0 for none). Keep it 5 seconds below the agent's own limit.
-#   --step-limit S   The remote time limit of the command, in seconds (default: --limit minus 10; 0 for none).
-#   --no-env         With --workspace: do not load its .env, as before setup has written it.
-#
-# Every action but resolve prints `__EXIT <code>` as its last line: 124 when a time limit cut the call, 255
-# when ssh itself failed. Without that line, the call is still running or the agent's shell lost it.
-# The control socket is /tmp/vrl-ssh-%C, as in docs/AGENTS/remote.md. Needs bash 3.2 or later; the remote
-# login shell must be of the sh family, such as bash, zsh, or dash.
+# Reach the remote host of a remote-mode workspace through one SSH master, with the time limits,
+# options, and exit marker that docs/AGENTS/remote.md asks for, so that no call hangs, no command
+# needs quoting, and no call opens a connection of its own.
 #
 # Everything runs inside main(), so that bash reads the whole script before running it.
 
-SOCK='/tmp/vrl-ssh-%C'
+usage() {
+	cat <<'EOF'
+Usage: vrl_ssh.sh <action> <alias> [options] [-- <command> | -- <script> [args...]]
+
+Actions:
+  resolve   Print the host name, user, port, and jump host the alias resolves to, without connecting.
+  check     Check that the master is up and the remote host answers through it; print the time the
+            round trip took. With --mount, also check that `mount` lists that folder, without
+            touching the folder.
+  connect   check; if it fails, close the old master, the one this script starts, and start a new one,
+            then check again. It never asks for a password: if the login needs one, a passphrase, or a
+            second factor, it prints the command for the user to run in their own terminal.
+  run       Run one shell command in the remote workspace, with its .env loaded. The command is the one
+            string after `--`, sent as it is on the standard input of a remote bash, so it needs no
+            quoting of its own and may span several lines; it gets no input itself. It runs any
+            command: never allow it without a prompt.
+  script    Run one of the scripts next to this one on the remote host (launch_run.sh, resources.sh,
+            gpu_hours.py, setup_clis.sh), with the arguments after its name. With --workspace, it runs
+            in the remote workspace with its .env loaded; without, in the remote home directory.
+  mount     Mount the remote workspace at --mount with SSHFS through the master, after unmounting a
+            stale SSHFS mount of the same alias there.
+
+Options:
+  --workspace DIR  The remote workspace, as an absolute path. run needs it.
+  --mount DIR      The mount folder: a folder right in the current directory, not hidden.
+  --limit S        The time limit of the whole call, in seconds (default: 15 for check and connect,
+                   30 for mount, 60 otherwise; 0 for none, as the setup script's login needs). Keep
+                   it 5 seconds below the agent's own limit for a shell call.
+  --step-limit S   The remote time limit of the command (default: --limit minus 10; 0 for none).
+  --no-env         With --workspace: do not load its .env, as before setup has written it.
+
+The alias must be a Host entry of ~/.ssh/config, with no user@ part; when docs/AGENTS/remote.md
+exists here, it must be the alias that file names. Every call prints `__EXIT <code>` as its last line,
+on a line of its own. Exit codes:
+  0    done; for run and script, the command's own exit code otherwise
+  1    the remote host, or the mount, does not answer: run connect, or stop and report
+  2    bad arguments
+  3    the login needs the user: they run the printed command in their own terminal
+  4    check --mount: the mount is not listed
+  5    the host key could not be verified: stop and report; never turn off host-key checking
+  6    no master is up: run connect first
+  98   the remote workspace has no .env: pass --no-env if setup has not written it yet
+  124  a time limit cut the call
+  129, 130, 143  the call was ended by SIGHUP, SIGINT, or SIGTERM
+  255  ssh itself failed
+The control socket is /tmp/vrl-ssh-<uid>/%C, in a folder only you can open. Needs bash 3.2 or later;
+the remote login shell must be of the sh family, such as bash, zsh, or dash.
+EOF
+}
 
 main() {
 	set -uo pipefail
+	TMP_FILES=() CUR_PID="" CUR_WD="" ACTION=""
+	trap 'cleanup' EXIT
+	trap 'on_signal 129' HUP
+	trap 'on_signal 130' INT
+	trap 'on_signal 143' TERM
 
-	local action="${1:-}"
-	case "$action" in
+	ACTION="${1:-}"
+	case "$ACTION" in
 		resolve | check | connect | run | script | mount) shift ;;
 		"" | -h | --help) NO_MARKER=1; usage; return 0 ;;
-		*) err "Unknown action: $action"; return 2 ;;
+		*) err "Unknown action: $ACTION"; return 2 ;;
 	esac
 	ALIAS="${1:-}"
 	case "$ALIAS" in
-		"" | -*) err "Give the SSH alias after the action"; return 2 ;;
-	esac
-	case "$ALIAS" in
-		*[!A-Za-z0-9._@-]*) err "Not an SSH alias: $ALIAS"; return 2 ;;
+		"" | -* | *[!A-Za-z0-9._-]*) err "Give the SSH alias, a Host entry of ~/.ssh/config, after the action: letters, digits, ., -, and _ only"; return 2 ;;
 	esac
 	shift
+	local rules_alias
+	rules_alias="$(sed -n 's/.*`ssh \([A-Za-z0-9._-]*\)`.*/\1/p' docs/AGENTS/remote.md 2>/dev/null | head -n 1)"
+	if [ -n "$rules_alias" ] && [ "$rules_alias" != "$ALIAS" ]; then
+		err "docs/AGENTS/remote.md names the alias $rules_alias, not $ALIAS"
+		return 2
+	fi
 
 	WORKSPACE="" MOUNT="" LIMIT="" STEP_LIMIT="" NO_ENV=0
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--workspace) WORKSPACE="${2:-}"; shift ;;
-			--workspace=*) WORKSPACE="${1#--workspace=}" ;;
+			--workspace=*) WORKSPACE="${1#*=}" ;;
 			--mount) MOUNT="${2:-}"; shift ;;
-			--mount=*) MOUNT="${1#--mount=}" ;;
+			--mount=*) MOUNT="${1#*=}" ;;
 			--limit) LIMIT="${2:-}"; shift ;;
-			--limit=*) LIMIT="${1#--limit=}" ;;
+			--limit=*) LIMIT="${1#*=}" ;;
 			--step-limit) STEP_LIMIT="${2:-}"; shift ;;
-			--step-limit=*) STEP_LIMIT="${1#--step-limit=}" ;;
+			--step-limit=*) STEP_LIMIT="${1#*=}" ;;
 			--no-env) NO_ENV=1 ;;
 			--) shift; break ;;
 			*) err "Unknown argument: $1"; return 2 ;;
@@ -73,65 +99,81 @@ main() {
 		shift
 	done
 
+	# Check the limits as text before any arithmetic, which would evaluate them.
+	case "$LIMIT" in *[!0-9]*) err "--limit takes whole seconds"; return 2 ;; esac
+	case "$STEP_LIMIT" in *[!0-9]*) err "--step-limit takes whole seconds"; return 2 ;; esac
 	if [ -z "$LIMIT" ]; then
-		case "$action" in
+		case "$ACTION" in
 			check | connect) LIMIT=15 ;;
 			mount) LIMIT=30 ;;
 			*) LIMIT=60 ;;
 		esac
 	fi
-	[ -n "$STEP_LIMIT" ] || STEP_LIMIT=$((LIMIT > 10 ? LIMIT - 10 : LIMIT))
-	case "$LIMIT$STEP_LIMIT" in
-		*[!0-9]*) err "--limit and --step-limit take whole seconds"; return 2 ;;
-	esac
+	LIMIT=$((10#$LIMIT))
+	if [ -z "$STEP_LIMIT" ]; then
+		if [ "$LIMIT" -gt 10 ]; then STEP_LIMIT=$((LIMIT - 10)); elif [ "$LIMIT" -gt 1 ]; then STEP_LIMIT=$((LIMIT - 1)); else STEP_LIMIT=$LIMIT; fi
+	fi
+	STEP_LIMIT=$((10#$STEP_LIMIT))
+	if [ "$LIMIT" -gt 0 ]; then DEADLINE=$(($(date +%s) + LIMIT)); else DEADLINE=0; fi
 	case "$WORKSPACE" in
 		"" | /*) ;;
 		*) err "--workspace must be an absolute path on the remote host"; return 2 ;;
 	esac
+	case "$WORKSPACE" in *"
+"*) err "--workspace holds one line"; return 2 ;; esac
 
 	TIMEOUT=""
-	if command -v timeout >/dev/null 2>&1; then
-		TIMEOUT=timeout
-	elif command -v gtimeout >/dev/null 2>&1; then
-		TIMEOUT=gtimeout
-	fi
-	# Arrays rather than functions: timeout runs a program, and a watchdog must end ssh itself.
-	SSH=(ssh -o BatchMode=yes -o ConnectTimeout=10 -S "$SOCK")
-	MASTER=(ssh -MNf -o ControlMaster=yes -o ControlPersist=4h -o "ControlPath=$SOCK" -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ConnectTimeout=10)
-	TMP_FILES=""
-	trap 'cleanup' EXIT
+	if command -v timeout >/dev/null 2>&1; then TIMEOUT=timeout
+	elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT=gtimeout; fi
+	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)"
 
-	case "$action" in
-		resolve) NO_MARKER=1; resolve ;;
-		check) check_connection ;;
-		connect) connect ;;
+	SOCK_DIR="/tmp/vrl-ssh-$(id -u)"
+	SOCK="$SOCK_DIR/%C"
+	SSH=(ssh -o BatchMode=yes -o ConnectTimeout=10 -o ControlMaster=no -S "$SOCK")
+	MASTER=(ssh -MNf -o ControlMaster=yes -o ControlPersist=4h -o "ControlPath=$SOCK" -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ConnectTimeout=10)
+
+	case "$ACTION" in
+		resolve) resolve ;;
+		check) sock_dir || return 1; check_connection ;;
+		connect) sock_dir || return 1; connect ;;
 		run)
 			[ -n "$WORKSPACE" ] || { err "run needs --workspace"; return 2; }
-			[ $# -gt 0 ] || { err "Give the command after --"; return 2; }
-			run_command "$@"
+			[ $# -eq 1 ] || { err "Give the command as one quoted string after --"; return 2; }
+			sock_dir || return 1
+			need_master || return
+			run_command "$1"
 			;;
 		script)
-			[ $# -gt 0 ] || { err "Give the script after --"; return 2; }
+			[ $# -ge 1 ] || { err "Give the script after --"; return 2; }
+			sock_dir || return 1
+			need_master || return
 			run_script "$@"
 			;;
-		mount) mount_workspace ;;
+		mount) sock_dir || return 1; mount_workspace ;;
 	esac
 }
 
-usage() { sed -n '2,/^# Everything runs inside/p' "$0" 2>/dev/null | sed '$d' | sed 's/^# \{0,1\}//'; }
 err() { printf 'vrl_ssh: %s\n' "$*" >&2; }
 
 # shellcheck disable=SC2329 # The EXIT trap calls it.
 cleanup() {
 	local f
-	for f in $TMP_FILES; do rm -f "$f"; done
+	for f in "${TMP_FILES[@]+"${TMP_FILES[@]}"}"; do rm -f "$f"; done
 }
 
+# shellcheck disable=SC2329 # The signal traps call it.
+on_signal() {
+	[ -z "$CUR_PID" ] || kill -TERM "$CUR_PID" 2>/dev/null
+	[ -z "$CUR_WD" ] || kill "$CUR_WD" 2>/dev/null
+	printf '\n__EXIT %s\n' "$1"
+	NO_MARKER=1
+	exit "$1"
+}
+
+# Sets NEW_TMP to a new temp file that cleanup deletes.
 new_tmp() {
-	local f
-	f="$(mktemp "${TMPDIR:-/tmp}/vrl-ssh.XXXXXX")" || return 1
-	TMP_FILES="$TMP_FILES $f"
-	printf '%s' "$f"
+	NEW_TMP="$(mktemp "${TMPDIR:-/tmp}/vrl-ssh.XXXXXX")" || { err "Could not create a temp file"; return 1; }
+	TMP_FILES+=("$NEW_TMP")
 }
 
 # Quote a string for any shell of the sh family, the remote login shell included.
@@ -140,41 +182,66 @@ sq() {
 	printf "'%s'" "$s"
 }
 
-# with_limit <seconds> <input file> <command...>: run the command with that input, end it at the limit
-# (SIGTERM, then SIGKILL 5 seconds later), and return 124 if the limit cut it.
+# The seconds left of the call's limit, at least 1; 0 when the call has no limit.
+remaining() {
+	if [ "$DEADLINE" = 0 ]; then echo 0; return; fi
+	local left=$((DEADLINE - $(date +%s)))
+	[ "$left" -ge 1 ] || left=1
+	echo "$left"
+}
+
+# with_limit <input file> <command...>: run the command with that input until the call's deadline
+# (SIGTERM, then SIGKILL 5 seconds later), and return 124 if the deadline cut it. It runs in the
+# background, so that a signal to this script is handled at once.
 with_limit() {
-	local limit="$1" input="$2" start rc pid watchdog
-	shift 2
-	start="$(date +%s)"
+	local input="$1" limit rc flag=""
+	shift
+	limit="$(remaining)"
 	if [ "$limit" = 0 ]; then
-		"$@" <"$input"
-		return
+		"$@" <"$input" &
+		CUR_PID=$!
 	elif [ -n "$TIMEOUT" ]; then
-		"$TIMEOUT" -k 5 "$limit" "$@" <"$input"
-		rc=$?
+		"$TIMEOUT" -k 5 "$limit" "$@" <"$input" &
+		CUR_PID=$!
 	else
 		# Neither timeout nor gtimeout, as on macOS without Homebrew's coreutils: a watchdog does the same.
 		# Its output goes to /dev/null, so that its leftover sleep cannot hold the agent's shell open.
+		new_tmp || return 1
+		flag="$NEW_TMP"
+		rm -f "$flag"
 		"$@" <"$input" &
-		pid=$!
+		CUR_PID=$!
 		(
 			sleep "$limit"
-			kill -TERM "$pid" 2>/dev/null
+			: >"$flag"
+			kill -TERM "$CUR_PID" 2>/dev/null
 			sleep 5
-			kill -KILL "$pid" 2>/dev/null
+			kill -KILL "$CUR_PID" 2>/dev/null
 		) >/dev/null 2>&1 </dev/null &
-		watchdog=$!
-		# Quiet, so that bash reports no "Terminated" job when the watchdog fires.
-		wait "$pid" 2>/dev/null
-		rc=$?
-		kill "$watchdog" 2>/dev/null
-		wait "$watchdog" 2>/dev/null
+		CUR_WD=$!
 	fi
-	if [ "$rc" -ne 0 ] && [ $(($(date +%s) - start)) -ge "$limit" ]; then
-		err "the local time limit of $limit s cut the call"
-		rc=124
+	wait "$CUR_PID" 2>/dev/null
+	rc=$?
+	if [ -n "$CUR_WD" ]; then
+		kill "$CUR_WD" 2>/dev/null
+		wait "$CUR_WD" 2>/dev/null
 	fi
+	if [ -n "$flag" ] && [ -e "$flag" ]; then rc=124
+	elif [ -n "$TIMEOUT" ] && [ "$rc" = 137 ] && [ "$DEADLINE" != 0 ] && [ "$(date +%s)" -ge "$DEADLINE" ]; then rc=124; fi
+	CUR_PID="" CUR_WD=""
 	return "$rc"
+}
+
+# The folder of the control socket: this user's, mode 700, not a symlink.
+sock_dir() {
+	if [ ! -e "$SOCK_DIR" ]; then
+		mkdir -m 700 "$SOCK_DIR" 2>/dev/null || { err "Could not create $SOCK_DIR"; return 1; }
+	fi
+	if [ -L "$SOCK_DIR" ] || [ ! -d "$SOCK_DIR" ] || [ ! -O "$SOCK_DIR" ]; then
+		err "$SOCK_DIR is not a folder of yours: remove it, or ask the user"
+		return 1
+	fi
+	chmod 700 "$SOCK_DIR" 2>/dev/null
 }
 
 resolve() {
@@ -182,40 +249,50 @@ resolve() {
 	conf="$(ssh -G "$ALIAS" 2>/dev/null)" || { err "ssh -G could not resolve $ALIAS"; return 1; }
 	printf '%s\n' "$conf" | awk '$1 == "hostname" || $1 == "user" || $1 == "port" || $1 == "proxyjump" { print $1 ": " $2 }'
 	host="$(printf '%s\n' "$conf" | awk '$1 == "hostname" { print $2; exit }')"
-	if [ "$host" = "$ALIAS" ]; then
-		printf 'note: the host name equals the alias, so ~/.ssh/config may have no Host %s entry\n' "$ALIAS"
+	[ "$host" != "$ALIAS" ] || printf 'note: the host name equals the alias, so ~/.ssh/config may have no Host %s entry\n' "$ALIAS"
+}
+
+# The PID of the master behind the socket, from `ssh -O check`; empty when none answers.
+master_pid() {
+	local out
+	out="$(with_limit /dev/null ssh -S "$SOCK" -O check "$ALIAS" 2>&1)" || return 1
+	printf '%s' "$out" | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p'
+}
+
+need_master() {
+	if ! master_pid >/dev/null; then
+		err "No master is up for $ALIAS: run connect first"
+		return 6
 	fi
 }
 
-# One round trip through the master: `ssh -O check` would only see that the local master process exists.
+# One round trip through the master; `ssh -O check` only sees that the local master process exists.
 round_trip() {
-	local limit="$1" start rc
+	local start rc
 	start="$(date +%s)"
-	with_limit "$limit" /dev/null "${SSH[@]}" -n "$ALIAS" true
+	with_limit /dev/null "${SSH[@]}" -n "$ALIAS" true
 	rc=$?
 	ROUND_TRIP_SECONDS=$(($(date +%s) - start))
 	return "$rc"
 }
 
-# The absolute path of a local folder, resolved through its parent, so that a dead mount is never touched.
-local_path() {
-	local parent
-	parent="$(cd "$(dirname "$1")" 2>/dev/null && pwd -P)" || return 1
-	printf '%s/%s' "$parent" "$(basename "$1")"
-}
-
-mount_listed() { mount | grep -Fq " on $1 "; }
-
 check_connection() {
-	local path
-	if ! round_trip "$LIMIT"; then
-		printf 'connection: no answer from %s through the master\n' "$ALIAS"
+	local rc path
+	if ! master_pid >/dev/null; then
+		printf 'connection: no master is up for %s\n' "$ALIAS"
+		return 6
+	fi
+	round_trip
+	rc=$?
+	if [ "$rc" -ne 0 ]; then
+		printf 'connection: %s does not answer through the master\n' "$ALIAS"
+		[ "$rc" = 124 ] && return 124
 		return 1
 	fi
 	printf 'connection: %s answers through the master (%s s)\n' "$ALIAS" "$ROUND_TRIP_SECONDS"
 	if [ -n "$MOUNT" ]; then
-		path="$(local_path "$MOUNT")" || { err "The mount's parent folder does not exist: $MOUNT"; return 2; }
-		if mount_listed "$path"; then
+		path="$(mount_path)" || return 2
+		if mount_entry "$path" >/dev/null; then
 			printf 'mount: %s is listed\n' "$path"
 		else
 			printf 'mount: %s is not listed\n' "$path"
@@ -224,30 +301,37 @@ check_connection() {
 	fi
 }
 
+# The PIDs of masters this script started for the alias: their command line is MASTER's, exactly.
+own_masters() {
+	local pattern
+	# The command line as a literal, with the characters that extended regexes treat as special escaped;
+	# a master the user started in their own terminal, without BatchMode, matches too.
+	pattern="$(printf '%s' "${MASTER[*]}" | sed 's/[][\\.*^$+?(){}|]/\\&/g')( -o BatchMode=yes)? $(printf '%s' "$ALIAS" | sed 's/[.]/\\./g')"
+	pgrep -U "$(id -u)" -f -- "^$pattern\$" 2>/dev/null
+}
+
 connect() {
-	local pattern socket errors rc
-	if round_trip "$LIMIT"; then
+	local pid socket errors rc
+	if master_pid >/dev/null && round_trip; then
 		printf 'connection: %s answers through the master (%s s)\n' "$ALIAS" "$ROUND_TRIP_SECONDS"
 		return 0
 	fi
 	printf 'connection: no answer; closing the old master\n'
-	with_limit "$LIMIT" /dev/null ssh -S "$SOCK" -O exit "$ALIAS" >/dev/null 2>&1
-	# Anchored at both ends: pkill -f matches whole command lines, and an unanchored pattern would also
-	# match the shell running pkill. Dots in the alias are escaped.
-	pattern="^ssh -MNf .* ${ALIAS//./\\.}\$"
-	if pgrep -f -- "$pattern" >/dev/null 2>&1; then
-		pkill -f -- "$pattern"
-		sleep 1
-	fi
+	pid="$(master_pid)"
+	with_limit /dev/null ssh -S "$SOCK" -O exit "$ALIAS" >/dev/null 2>&1
+	sleep 1
+	for p in $pid $(own_masters); do
+		kill "$p" 2>/dev/null
+	done
 	# A socket left behind makes the new master skip multiplexing without failing.
-	socket="$(ssh -G -o ControlPath="$SOCK" "$ALIAS" 2>/dev/null | awk '$1 == "controlpath" { print $2; exit }')"
-	[ -n "$socket" ] && rm -f "$socket"
+	socket="$(ssh -G -o "ControlPath=$SOCK" "$ALIAS" 2>/dev/null | awk '$1 == "controlpath" { print $2; exit }')"
+	if [ -n "$socket" ] && [ -S "$socket" ] && [ -O "$socket" ]; then rm -f "$socket"; fi
 
 	printf 'connection: starting a new master\n'
-	errors="$(new_tmp)" || return 1
-	# Its output goes to a file, not to the agent's shell, since the master stays in the background. Its
-	# command line starts with `ssh -MNf` and ends with the alias, for the pkill pattern above.
-	with_limit "$LIMIT" /dev/null "${MASTER[@]}" -o BatchMode=yes "$ALIAS" >/dev/null 2>"$errors"
+	new_tmp || return 1
+	errors="$NEW_TMP"
+	# Its output goes to a file, not to the agent's shell, since the master stays in the background.
+	with_limit /dev/null "${MASTER[@]}" -o BatchMode=yes "$ALIAS" >/dev/null 2>"$errors"
 	rc=$?
 	if [ "$rc" -ne 0 ]; then
 		sed 's/^/ssh: /' "$errors" >&2
@@ -255,11 +339,17 @@ connect() {
 			err "The host key could not be verified. Stop and report to the user; never turn off host-key checking."
 			return 5
 		fi
-		err "The master did not start. If the login needs a password, a passphrase, or a second factor, ask the user to run this in their own terminal, then run connect again:"
-		printf '  %s %s\n' "${MASTER[*]}" "$ALIAS" >&2
-		return 3
+		if grep -qiE 'Permission denied|passphrase|password|keyboard-interactive|verification code' "$errors"; then
+			err "The login needs the user. Ask them to run this in their own terminal, then run connect again:"
+			printf '  %s %s\n' "${MASTER[*]}" "$ALIAS" >&2
+			return 3
+		fi
+		err "The master did not start: $ALIAS is unreachable"
+		[ "$rc" = 124 ] && return 124
+		[ "$rc" = 255 ] && return 255
+		return 1
 	fi
-	if round_trip "$LIMIT"; then
+	if round_trip; then
 		printf 'connection: %s answers through the new master (%s s)\n' "$ALIAS" "$ROUND_TRIP_SECONDS"
 		return 0
 	fi
@@ -267,8 +357,8 @@ connect() {
 	return 1
 }
 
-# The remote command line: enter the workspace and load its .env, then run the interpreter on the standard
-# input under the remote step limit.
+# The remote command line: enter the workspace and load its .env, then run the interpreter on the
+# standard input under the remote step limit.
 remote_line() {
 	local interpreter="$1" line=""
 	if [ -n "$WORKSPACE" ]; then
@@ -287,49 +377,101 @@ remote_line() {
 
 run_command() {
 	local input
-	input="$(new_tmp)" || return 1
-	# The braces give the command no input, so that nothing it runs waits on the standard input.
+	new_tmp || return 1
+	input="$NEW_TMP"
+	# The braces give the command no input, so that nothing it runs reads the rest of the stream.
 	{
 		printf '{\n'
-		printf '%s\n' "$*"
+		printf '%s\n' "$1"
 		printf '} </dev/null\n'
 	} >"$input"
-	with_limit "$LIMIT" "$input" "${SSH[@]}" "$ALIAS" "$(remote_line 'bash -s')"
+	with_limit "$input" "${SSH[@]}" "$ALIAS" "$(remote_line 'bash -s')"
 }
 
 run_script() {
-	local file="$1" interpreter arg
+	local name="$1" file interpreter arg input
 	shift
-	[ -f "$file" ] || { err "No such script: $file"; return 2; }
+	case "$(basename "$name")" in
+		launch_run.sh | resources.sh | gpu_hours.py | setup_clis.sh) ;;
+		*) err "script runs only launch_run.sh, resources.sh, gpu_hours.py, or setup_clis.sh"; return 2 ;;
+	esac
+	file="$SCRIPT_DIR/$(basename "$name")"
+	[ -f "$file" ] || { err "No such script next to vrl_ssh.sh: $(basename "$name")"; return 2; }
+	new_tmp || return 1
+	input="$NEW_TMP"
 	case "$file" in
-		*.py) interpreter="python3 -" ;;
-		*) interpreter="bash -s --" ;;
+		*.py)
+			interpreter="python3 -"
+			cat "$file" >"$input"
+			;;
+		*)
+			interpreter="bash -s --"
+			# The braces keep a command in the script from reading the rest of it as its input.
+			{ printf '{\n'; cat "$file"; printf '\n} </dev/null\n'; } >"$input"
+			;;
 	esac
 	for arg in "$@"; do interpreter="$interpreter $(sq "$arg")"; done
-	with_limit "$LIMIT" "$file" "${SSH[@]}" "$ALIAS" "$(remote_line "$interpreter")"
+	with_limit "$input" "${SSH[@]}" "$ALIAS" "$(remote_line "$interpreter")"
+}
+
+# The absolute path of the mount folder, which must sit right in the current folder; its parent is
+# resolved, never the folder itself, so that a dead mount is never touched.
+mount_path() {
+	local here name
+	here="$(pwd -P)"
+	case "$MOUNT" in
+		"$here"/*) name="${MOUNT#"$here"/}" ;;
+		/*) err "The mount folder must sit right in the current folder: $MOUNT"; return 1 ;;
+		*) name="${MOUNT#./}" ;;
+	esac
+	case "$name" in
+		"" | */* | .* | *"
+"*) err "The mount folder must be a plain folder name in the current folder, not hidden: $MOUNT"; return 1 ;;
+	esac
+	printf '%s/%s' "$here" "$name"
+}
+
+# The `mount` line for a path, as macOS prints it, or Linux with its octal escapes.
+mount_entry() {
+	local path="$1" escaped table
+	escaped="$(printf '%s' "$path" | sed 's/\\/\\134/g; s/ /\\040/g; s/	/\\011/g')"
+	table="$(mount 2>/dev/null)"
+	printf '%s\n' "$table" | awk -v a=" on $path " -v b=" on $escaped " 'index($0, a) || index($0, b) { print; found = 1; exit } END { exit !found }'
 }
 
 mount_workspace() {
-	local path rc
+	local path entry rc
 	[ -n "$WORKSPACE" ] && [ -n "$MOUNT" ] || { err "mount needs --workspace and --mount"; return 2; }
-	path="$(local_path "$MOUNT")" || { err "The mount's parent folder does not exist: $MOUNT"; return 2; }
-	round_trip "$LIMIT" || { err "No answer through the master: run connect first"; return 1; }
-	if mount_listed "$path"; then
+	path="$(mount_path)" || return 2
+	need_master || return
+	round_trip || { err "$ALIAS does not answer through the master: run connect first"; return 1; }
+	if entry="$(mount_entry "$path")"; then
+		case "$entry" in
+			"$ALIAS:"* | *fuse* | *sshfs*) ;;
+			*) err "Something other than an SSHFS mount of $ALIAS is mounted at $path: stop and report"; return 1 ;;
+		esac
 		printf 'mount: unmounting the stale mount at %s\n' "$path"
 		case "$(uname -s)" in
-			Linux) with_limit "$LIMIT" /dev/null fusermount -u "$path" ;;
-			*) with_limit "$LIMIT" /dev/null umount "$path" ;;
+			Linux) with_limit /dev/null fusermount -u "$path" ;;
+			*) with_limit /dev/null umount "$path" ;;
 		esac || { err "Could not unmount $path; stop and report"; return 1; }
 	fi
-	[ -d "$path" ] || { err "The mount folder does not exist: $path"; return 2; }
+	if [ -L "$path" ] || [ ! -d "$path" ]; then
+		err "The mount folder does not exist, or is a symlink: $path"
+		return 2
+	fi
+	if [ -n "$(ls -A "$path" 2>/dev/null)" ]; then
+		err "The mount folder is not empty: $path. Stop and report; never mount over files."
+		return 2
+	fi
 	command -v sshfs >/dev/null 2>&1 || { err "sshfs is not installed on this machine"; return 2; }
-	with_limit "$LIMIT" /dev/null sshfs \
+	with_limit /dev/null sshfs \
 		-o ssh_command="ssh -S $SOCK -o BatchMode=yes -o ControlMaster=no" \
 		-o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3,idmap=user \
 		"$ALIAS:$WORKSPACE" "$path"
 	rc=$?
 	[ "$rc" -eq 0 ] || return "$rc"
-	if mount_listed "$path"; then
+	if mount_entry "$path" >/dev/null; then
 		printf 'mount: %s:%s is mounted at %s\n' "$ALIAS" "$WORKSPACE" "$path"
 	else
 		err "sshfs returned, but mount does not list $path"
@@ -340,5 +482,6 @@ mount_workspace() {
 NO_MARKER=0
 main "$@"
 rc=$?
-[ "$NO_MARKER" = 1 ] || printf '__EXIT %s\n' "$rc"
+[ "$rc" != 124 ] || err "the time limit of $LIMIT s cut the call"
+[ "$NO_MARKER" = 1 ] || printf '\n__EXIT %s\n' "$rc"
 exit "$rc"

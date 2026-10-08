@@ -1,103 +1,180 @@
 #!/usr/bin/env bash
-# Launch a long-running command the way docs/AGENTS/log_template.md asks: write the log header, run the
-# command detached with its output in the log, and let the same shell append the footer and exit code
-# when the command ends.
+# Launch a long-running command the way docs/AGENTS/log_template.md asks: write the log header, run
+# the command detached with its output in the log, and let the same shell append the footer and exit
+# code when the command and every process it started have ended.
 #
-# Usage, from the workspace root:
-#   launch_run.sh --log <log> --purpose '<what it does>' (--tmux <session> | --nohup) [options] -- '<command>'
-#
-#   --log FILE       The log, such as logs/<date>-<name>/<run>.log; its folder is created if missing.
-#   --purpose TEXT   The header's purpose line, such as '<date>-<name> / <run>: <one line on what it does>'.
-#   --tmux SESSION   Run in a new window of this tmux session, named after the log: `<date>-<name>/<run>`.
-#   --nohup          Run in the background as a process of its own, outside any terminal.
-#   --code DIR       The checkout the command runs from, such as main_repo or worktrees/<branch>: the header
-#                    names its branch and commit, and whether it is clean. When it is dirty and --outputs is
-#                    given, `git diff HEAD` and the untracked files are saved in <outputs>/git_diff.patch.
-#   --outputs DIR    The run's output folder, created if missing.
-#   --gpus IDS       The GPU ids, such as 0,1: exported as CUDA_VISIBLE_DEVICES, and named with their model.
-#   --machine NAME   The machine's short name in docs/AGENTS/machine.md (default: the host name).
-#   --env NAME       The Python environment (default: the active virtual environment's folder, or none).
-#   --restart        Go on when the log's last run has no footer, as after a crash or a kill, once you have
-#                    made sure that run is gone; a new header goes below it. Without it, such a log is refused.
-#   --new-session    With --tmux: create the session if it does not exist. Without it, a missing session is
-#                    refused, since the session should start from a shell with the machine's settings, such
-#                    as a proxy that docs/AGENTS/machine.md names.
-#
-# The command is one string, exactly as the plan writes it. It runs with bash from the workspace root, with
-# .env loaded and no input. A second copy is refused: a tmux window of the same name, or a process that the
-# log's last session line names and that is still alive. After 3 seconds, the script checks that the command
-# still runs: it prints the log, the session, and the code, or else the end of the log, and exits 1.
-#
-# In remote mode, run it on the remote host through the master:
-#   vrl_ssh.sh script <alias> --workspace <remote workspace> -- launch_run.sh <options> -- '<command>'
+# Run it from the workspace root, or in remote mode on the remote host:
+#   vrl_ssh.sh script <alias> --workspace <remote workspace> -- launch_run.sh <options>
 #
 # Everything runs inside main(), so that bash reads the whole script before running it when the
 # script comes in on stdin.
 
+usage() {
+	cat <<'EOF'
+Usage, from the workspace root:
+  launch_run.sh --plan docs/plans/<date>-<name>.md --run <run> --plan-sha256 <hash> <options>
+  launch_run.sh --purpose '<what it does>' <options> -- '<command>'
+
+The first form launches a run of an approved plan: its command is the fenced block of the plan file
+whose info string holds `run=<run>`, such as ```bash run=baseline, and the plan file must still have
+the SHA-256 recorded when the plan was approved. Use it whenever a plan exists; it is the only form
+to allow without a prompt, since it cannot run a command the plan does not hold. The second form
+runs any command, such as a smoke run or a data job, and asks for the user's review like any command.
+
+Options, required:
+  --log FILE          The log, such as logs/<date>-<name>/<run>.log; its folder is created if missing.
+  --tmux SESSION      Run in a new window of this tmux session, named after the log; or
+  --nohup             run in the background as a session of its own, outside any terminal.
+  --gpus IDS          The GPUs to use, such as 0,1, exported as CUDA_VISIBLE_DEVICES in the PCI order
+                      that nvidia-smi uses; or
+  --no-gpu            for a command that uses no GPU: CUDA_VISIBLE_DEVICES is set empty.
+  --machine NAME      The machine's short name in docs/AGENTS/machine.md.
+  --code DIR|none     The checkout the command runs from, such as main_repo or worktrees/<branch>.
+
+Options, optional:
+  --purpose TEXT      The header's purpose line; in the plan form it defaults to the plan and the run.
+  --outputs DIR       The run's output folder, created if missing; required when the checkout is
+                      dirty, since its diff is saved there as git_diff.patch, readable by you only.
+  --env NAME          The Python environment (default: the active virtual or conda environment).
+  --restart           Go on when the log's last run has no footer and its process is gone, as after
+                      a crash: a footer that closes it at the log's last write goes in first.
+  --resume            Go on when the log's last run finished with exit code 0, to continue it in
+                      the same outputs. Without it, a finished run is refused: give a rerun a new run
+                      name instead, since a finished run is never overwritten.
+  --new-session       With --tmux: create the session if it does not exist.
+  --wait S            Wait up to S seconds (default 3) before reporting; for a smoke run, wait for
+                      it to end and report its exit code.
+
+It refuses to run on a machine with a Slurm scheduler, a command that sets CUDA_VISIBLE_DEVICES
+itself, a command that seems to hold a secret, and a second copy of a run that is still alive.
+The header holds a run-id that only the footer repeats, so a program's output cannot fake either.
+
+Prints the log, run-id, session, code, and status. Exit codes: 0 running, or ended with exit code 0
+within the wait; 1 ended with another exit code, or did not start; 2 bad arguments; 3 refused.
+EOF
+}
+
 main() {
 	set -uo pipefail
+	umask 077
 
-	local log="" purpose="" session="" nohup=0 code="" outputs="" gpus="" machine="" envname="" restart=0 new_session=0
+	local log="" purpose="" session="" nohup=0 gpus="" no_gpu=0 machine="" code="" outputs="" envname=""
+	local restart=0 resume=0 new_session=0 wait_s=3 plan="" run="" plan_sha=""
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--log) log="${2:-}"; shift ;;
-			--log=*) log="${1#--log=}" ;;
 			--purpose) purpose="${2:-}"; shift ;;
-			--purpose=*) purpose="${1#--purpose=}" ;;
 			--tmux) session="${2:-}"; shift ;;
-			--tmux=*) session="${1#--tmux=}" ;;
 			--nohup) nohup=1 ;;
-			--code) code="${2:-}"; shift ;;
-			--code=*) code="${1#--code=}" ;;
-			--outputs) outputs="${2:-}"; shift ;;
-			--outputs=*) outputs="${1#--outputs=}" ;;
 			--gpus) gpus="${2:-}"; shift ;;
-			--gpus=*) gpus="${1#--gpus=}" ;;
+			--no-gpu) no_gpu=1 ;;
 			--machine) machine="${2:-}"; shift ;;
-			--machine=*) machine="${1#--machine=}" ;;
+			--code) code="${2:-}"; shift ;;
+			--outputs) outputs="${2:-}"; shift ;;
 			--env) envname="${2:-}"; shift ;;
-			--env=*) envname="${1#--env=}" ;;
 			--restart) restart=1 ;;
+			--resume) resume=1 ;;
 			--new-session) new_session=1 ;;
+			--wait) wait_s="${2:-}"; shift ;;
+			--plan) plan="${2:-}"; shift ;;
+			--run) run="${2:-}"; shift ;;
+			--plan-sha256) plan_sha="${2:-}"; shift ;;
 			-h | --help) usage; return 0 ;;
 			--) shift; break ;;
 			*) err "Unknown argument: $1"; return 2 ;;
 		esac
 		shift
 	done
-	local cmd="$*"
 
-	[ -n "$cmd" ] || { err "Give the command after --"; return 2; }
+	# Arguments.
+	local cmd=""
+	if [ -n "$plan" ]; then
+		[ $# -eq 0 ] || { err "The plan form takes no command after --: the command comes from the plan"; return 2; }
+		[ -n "$run" ] || { err "--plan needs --run"; return 2; }
+		[ -n "$plan_sha" ] || { err "--plan needs --plan-sha256, the hash recorded when the plan was approved"; return 2; }
+	else
+		[ -z "$run$plan_sha" ] || { err "--run and --plan-sha256 go with --plan"; return 2; }
+		[ $# -eq 1 ] || { err "Give the command as one quoted string after --"; return 2; }
+		cmd="$1"
+		[ -n "$cmd" ] || { err "The command is empty"; return 2; }
+		[ -n "$purpose" ] || { err "--purpose is required"; return 2; }
+	fi
 	[ -n "$log" ] || { err "--log is required"; return 2; }
-	[ -n "$purpose" ] || { err "--purpose is required"; return 2; }
 	case "${session:+tmux}$nohup" in
 		tmux0 | 1) ;;
 		*) err "Choose one of --tmux <session> and --nohup"; return 2 ;;
 	esac
+	case "${gpus:+g}$no_gpu" in
+		g0 | 1) ;;
+		*) err "Choose one of --gpus <ids> and --no-gpu"; return 2 ;;
+	esac
 	case "$gpus" in
 		*[!0-9,]* | ,* | *, | *,,*) err "--gpus takes ids such as 0 or 0,1"; return 2 ;;
 	esac
-	[ -f .env ] || { err "Run this from the workspace root: there is no .env here"; return 2; }
-	if [ -n "$session" ]; then
-		command -v tmux >/dev/null 2>&1 || { err "tmux is not installed"; return 2; }
-	fi
+	[ -n "$machine" ] || { err "--machine is required: the short name in docs/AGENTS/machine.md"; return 2; }
+	[ -n "$code" ] || { err "--code is required: the checkout, or none"; return 2; }
+	case "$session" in
+		*[!A-Za-z0-9_-]*) err "A tmux session name holds only letters, digits, - and _"; return 2 ;;
+	esac
+	case "$wait_s" in "" | *[!0-9]*) err "--wait takes whole seconds"; return 2 ;; esac
+	local v
+	for v in "$purpose" "$machine" "$code" "$outputs" "$envname" "$log" "$run"; do
+		case "$v" in *"$NL"* | *"$CR"*) err "Options other than the command hold one line each"; return 2 ;; esac
+	done
 
+	# Refusals.
+	if [ -n "${SLURM_JOB_ID:-}" ] || command -v sbatch >/dev/null 2>&1; then
+		err "This machine has a Slurm scheduler: launch through it as docs/AGENTS/machine.md says, by hand."
+		return 3
+	fi
+	[ -f .env ] || { err "Run this from the workspace root: there is no .env here"; return 2; }
 	local ws
 	ws="$(pwd -P)"
+	if [ -n "$plan" ]; then
+		cmd="$(plan_command "$ws" "$plan" "$run" "$plan_sha")" || return 3
+		[ -n "$purpose" ] || purpose="$(basename "$plan" .md) / $run: run $run of the approved plan"
+	fi
+	if printf '%s' "$cmd" | grep -Eq '(^|[^A-Za-z0-9_])CUDA_VISIBLE_DEVICES='; then
+		err "The command sets CUDA_VISIBLE_DEVICES itself: pass the GPUs with --gpus instead."
+		return 3
+	fi
+	if printf '%s' "$cmd" | grep -Eiq "$SECRET_RE"; then
+		err "The command seems to hold a secret, which the log header would record: keep it out of the command."
+		return 3
+	fi
+	if [ -n "$session" ] && ! command -v tmux >/dev/null 2>&1; then
+		err "tmux is not installed"
+		return 2
+	fi
+	if [ "$code" != none ]; then
+		git -C "$code" rev-parse --git-dir >/dev/null 2>&1 || { err "Not a git checkout: $code"; return 2; }
+	fi
+
 	set -a
+	set +u
 	# shellcheck disable=SC1091
 	. ./.env
+	set -u
 	set +a
 
 	local log_path="$log"
 	case "$log_path" in /*) ;; *) log_path="$ws/$log_path" ;; esac
-	local run window
-	run="$(basename "$log_path" .log)"
-	# tmux reads `:` and `.` in a target as separators.
-	window="$(basename "$(dirname "$log_path")")/$run"
-	window="${window//[:.]/-}"
+	mkdir -p "$(dirname "$log_path")" || { err "Could not create the log's folder"; return 1; }
+	local window
+	window="$(basename "$(dirname "$log_path")")/$(basename "$log_path" .log)"
+	window="$(printf '%s' "$window" | tr -c 'A-Za-z0-9_/-' '-')"
 
-	# Never start a second copy.
+	# One launch of a log at a time.
+	LOCK="$log_path.lock"
+	if ! mkdir "$LOCK" 2>/dev/null; then
+		if [ -O "$LOCK" ] && [ -n "$(find "$LOCK" -maxdepth 0 -mmin +2 2>/dev/null)" ]; then
+			rmdir "$LOCK" 2>/dev/null
+		fi
+		mkdir "$LOCK" 2>/dev/null || { err "Another launch of this log is in progress: try again in a minute."; return 3; }
+	fi
+	trap 'rmdir "$LOCK" 2>/dev/null' EXIT
+
+	# Never start a second copy; never overwrite a finished run.
 	if [ -n "$session" ]; then
 		if ! tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -Fxq -- "$session"; then
 			if [ "$new_session" = 1 ]; then
@@ -112,37 +189,50 @@ main() {
 			return 3
 		fi
 	fi
-	if [ -f "$log_path" ] && log_is_open "$log_path"; then
-		local pid
-		pid="$(last_session_line "$log_path" | sed -n 's/.*PID \([0-9][0-9]*\).*/\1/p')"
-		if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-			err "PID $pid from the log's last session line is still alive: the run may still be going. Check it before starting it again."
-			return 3
-		fi
-		if [ "$restart" = 0 ]; then
-			err "The log's last run has no footer: it is still running somewhere, or it was killed. Make sure it is gone, then pass --restart."
-			return 3
-		fi
+	if [ -f "$log_path" ]; then
+		local state last_id last_pid
+		state="$(log_state "$log_path")"
+		last_id="$(printf '%s' "$state" | cut -f2)"
+		last_pid="$(printf '%s' "$state" | cut -f3)"
+		case "$state" in
+			open*)
+				if [ -n "$last_pid" ] && run_alive "$last_pid" "$last_id"; then
+					err "PID $last_pid of run $last_id is still alive: the run is still going. Check it before starting it again."
+					return 3
+				fi
+				[ "$restart" = 1 ] || {
+					err "The log's last run has no footer and its process is gone: it crashed or was killed. Pass --restart to start it again."
+					return 3
+				}
+				close_dead_run "$log_path" "$last_id"
+				;;
+			finished0*)
+				if [ "$resume" = 0 ] && [ -n "$outputs" ] && [ -n "$(ls -A "$outputs" 2>/dev/null)" ]; then
+					err "The log's last run finished with exit code 0 and its outputs exist: give a rerun a new run name, or pass --resume to continue it."
+					return 3
+				fi
+				;;
+		esac
 	fi
 
 	# The header's code, outputs, and resources lines.
 	local code_line="none" patch=""
-	if [ -n "$code" ]; then
-		local branch commit state="clean"
-		commit="$(git -C "$code" rev-parse --short=12 HEAD 2>/dev/null)" || { err "Not a git checkout: $code"; return 2; }
-		branch="$(git -C "$code" rev-parse --abbrev-ref HEAD 2>/dev/null)"
-		if [ -n "$(git -C "$code" status --porcelain 2>/dev/null)" ]; then
-			state="dirty"
-			if [ -n "$outputs" ]; then
-				patch="$(save_diff "$code" "$outputs")" || return 1
-			fi
+	if [ "$code" != none ]; then
+		local branch commit state_word="clean"
+		commit="$(git_safe "$code" rev-parse --short=12 HEAD 2>/dev/null)" || { err "Not a git checkout: $code"; return 2; }
+		branch="$(git_safe "$code" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+		if [ -n "$(git_safe "$code" status --porcelain 2>/dev/null)" ]; then
+			state_word="dirty"
+			[ -n "$outputs" ] || { err "The checkout $code is dirty: give --outputs so its diff is saved with the run."; return 3; }
+			patch="$(save_diff "$code" "$outputs")" || return 1
 		fi
-		code_line="$code ($branch) @ $commit ($state)"
+		code_line="$code ($branch) @ $commit ($state_word)"
 	fi
 	[ -z "$outputs" ] || mkdir -p "$outputs" || { err "Could not create $outputs"; return 1; }
-	[ -n "$machine" ] || machine="$(hostname -s 2>/dev/null || hostname)"
 	if [ -z "$envname" ]; then
-		if [ -n "${VIRTUAL_ENV:-}" ]; then envname="$(basename "$VIRTUAL_ENV")"; else envname="none"; fi
+		if [ -n "${VIRTUAL_ENV:-}" ]; then envname="$(basename "$VIRTUAL_ENV")"
+		elif [ -n "${CONDA_DEFAULT_ENV:-}" ]; then envname="$CONDA_DEFAULT_ENV"
+		else envname="none"; fi
 	fi
 	local resources
 	if [ -n "$gpus" ]; then
@@ -150,83 +240,212 @@ main() {
 	else
 		resources="$machine, no GPU, Python env $envname"
 	fi
+	local run_id
+	run_id="$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')"
 	local header
-	header="$(printf '# command:   %s\n# purpose:   %s\n# code:      %s\n# outputs:   %s\n# resources: %s' \
-		"$cmd" "$purpose" "$code_line" "${outputs:-none}" "$resources")"
+	header="$(printf '# command:   %s\n' "$cmd" | sed '2,$s/^/#            /')"
+	[ -z "$plan" ] || header="$header$NL# plan:      $plan (sha256 $plan_sha), run $run"
+	header="$header$NL$(printf '# purpose:   %s\n# code:      %s\n# outputs:   %s\n# resources: %s\n# run-id:    %s' \
+		"$purpose" "$code_line" "${outputs:-none}" "$resources" "$run_id")"
 
-	mkdir -p "$(dirname "$log_path")" || { err "Could not create the log's folder"; return 1; }
-
-	# The shell that runs the command writes the header first, with its own PID, and the footer when the
-	# command ends. It passes a signal on to the command as SIGTERM, so that closing the tmux window or
-	# `kill <PID>` ends the run and still leaves a footer; only SIGKILL leaves none.
 	local where=""
 	[ -z "$session" ] || where="$session:$window, "
+	local venv_lines=""
+	if [ -n "${VIRTUAL_ENV:-}" ]; then
+		venv_lines="export VIRTUAL_ENV=$(sq "$VIRTUAL_ENV") PATH=$(sq "$VIRTUAL_ENV/bin"):\"\$PATH\""
+	fi
+
+	# The shell that runs the command writes the header, with its own PID, and the footer. The command
+	# runs in a process group of its own, so that a signal to this shell, such as closing the tmux
+	# window or `kill <PID>`, reaches every process of the run; the footer waits until all have ended.
 	local inner
-	inner="cd $(sq "$ws") || exit 97
+	inner="umask 077
+cd $(sq "$ws") || exit 97
+exec 2>>$(sq "$log_path")
 set -a; . ./.env; set +a
-${gpus:+export CUDA_VISIBLE_DEVICES=$gpus
-}ts() { local z; z=\$(date +%z); printf '%s %s:%s' \"\$(date '+%Y-%m-%d %H:%M:%S')\" \"\${z%??}\" \"\${z#???}\"; }
-child=
-trap 'kill -TERM \$child 2>/dev/null' HUP INT TERM
+export CUDA_VISIBLE_DEVICES=$(sq "$gpus") CUDA_DEVICE_ORDER=PCI_BUS_ID PYTHONUNBUFFERED=1
+$venv_lines
+unset ANTHROPIC_API_KEY OPENAI_API_KEY GH_TOKEN GITHUB_TOKEN NOTION_TOKEN NOTION_API_KEY
+ts() { local z; z=\$(date +%z); printf '%s %s:%s' \"\$(date '+%Y-%m-%d %H:%M:%S')\" \"\${z%??}\" \"\${z#???}\"; }
+stop=0 child=
+trap 'stop=1; [ -n \"\$child\" ] && kill -TERM -- -\"\$child\" 2>/dev/null' HUP INT TERM
 start=\$(date +%s)
 { printf '%s\\n' $(sq "$header"); printf '# session:   %sPID %s\\n' $(sq "$where") \"\$\$\"; printf '# started:   %s\\n' \"\$(ts)\"; printf '# ---------- stdout + stderr ----------\\n'; } >>$(sq "$log_path")
+set -m
 bash -c $(sq "$cmd") >>$(sq "$log_path") 2>&1 </dev/null &
 child=\$!
-wait \$child; rc=\$?
-while kill -0 \$child 2>/dev/null; do wait \$child; rc=\$?; done
+set +m
+[ \"\$stop\" = 0 ] || kill -TERM -- -\"\$child\" 2>/dev/null
+wait \"\$child\"; rc=\$?
+while kill -0 \"\$child\" 2>/dev/null; do wait \"\$child\"; rc=\$?; done
+n=0
+while kill -0 -- -\"\$child\" 2>/dev/null; do
+  [ \$n = 0 ] && kill -TERM -- -\"\$child\" 2>/dev/null
+  [ \$n = 10 ] && kill -KILL -- -\"\$child\" 2>/dev/null
+  [ \$n -ge 15 ] && break
+  sleep 1; n=\$((n + 1))
+done
+[ -n \"\$(tail -c 1 $(sq "$log_path"))\" ] && printf '\\n' >>$(sq "$log_path")
 d=\$((\$(date +%s) - start))
-{ printf '# ---------- end ----------\\n'; printf '# finished:  %s (%d:%02d:%02d), exit code %d\\n' \"\$(ts)\" \$((d / 3600)) \$((d % 3600 / 60)) \$((d % 60)) \"\$rc\"; } >>$(sq "$log_path")"
+{ printf '# ---------- end %s ----------\\n' $(sq "$run_id"); printf '# finished:  %s (%d:%02d:%02d), exit code %d\\n' \"\$(ts)\" \$((d / 3600)) \$((d % 3600 / 60)) \$((d % 60)) \"\$rc\"; } >>$(sq "$log_path")"
 
-	local before
-	before="$(header_count "$log_path")"
 	if [ -n "$session" ]; then
-		tmux new-window -d -t "$session:" -n "$window" -c "$ws" "exec bash -c $(sq "$inner")" ||
-			{ err "tmux could not open the window"; return 1; }
+		if tmux_major_at_least 3; then
+			# Given as separate words, tmux runs the command itself, not through the user's default shell.
+			tmux new-window -d -t "$session:" -n "$window" -c "$ws" bash -c "$inner" ||
+				{ err "tmux could not open the window"; return 1; }
+		else
+			tmux new-window -d -t "$session:" -n "$window" -c "$ws" "exec bash -c $(sq "$inner")" ||
+				{ err "tmux could not open the window"; return 1; }
+		fi
+	elif command -v perl >/dev/null 2>&1; then
+		# A session of its own, with SIGINT and SIGHUP back to their defaults, which `&` would ignore.
+		perl -MPOSIX -e 'POSIX::setsid(); $SIG{INT} = $SIG{HUP} = "DEFAULT"; exec @ARGV or exit 127' \
+			bash -c "$inner" >/dev/null 2>&1 </dev/null &
 	elif command -v setsid >/dev/null 2>&1; then
-		setsid nohup bash -c "$inner" >/dev/null 2>&1 </dev/null &
+		setsid bash -c "$inner" >/dev/null 2>&1 </dev/null &
 	else
 		nohup bash -c "$inner" >/dev/null 2>&1 </dev/null &
 	fi
 
-	sleep 3
-	if [ "$(header_count "$log_path")" -le "$before" ]; then
-		err "The command did not start: no new header in $log"
+	# Wait for the header, then up to --wait seconds for the end.
+	local waited=0
+	while [ "$waited" -lt 5 ] && ! grep -Fq "# run-id:    $run_id" "$log_path" 2>/dev/null; do
+		sleep 1
+		waited=$((waited + 1))
+	done
+	if ! grep -Fq "# run-id:    $run_id" "$log_path" 2>/dev/null; then
+		err "The command did not start: no header with run-id $run_id in $log"
 		return 1
 	fi
+	rmdir "$LOCK" 2>/dev/null
+	waited=0
+	while [ "$waited" -lt "$wait_s" ] && ! grep -Fq -- "# ---------- end $run_id ----------" "$log_path"; do
+		sleep 1
+		waited=$((waited + 1))
+	done
 	printf 'log       %s\n' "$log"
-	printf 'session   %s\n' "$(last_session_line "$log_path" | sed 's/^# session: *//')"
+	printf 'run-id    %s\n' "$run_id"
+	printf 'session   %s\n' "$(grep -A1 -F "# run-id:    $run_id" "$log_path" | sed -n 's/^# session: *//p')"
 	printf 'code      %s\n' "$code_line"
-	if [ -n "$patch" ]; then
-		printf 'diff      %s\n' "$patch"
-	elif [ "${code_line%(dirty)}" != "$code_line" ]; then
-		printf 'diff      not saved: give --outputs to save it in the run folder\n'
-	fi
-	if log_is_open "$log_path"; then
-		printf 'status    running after 3 s\n'
+	[ -z "$patch" ] || printf 'diff      %s\n' "$patch"
+	if ! grep -Fq -- "# ---------- end $run_id ----------" "$log_path"; then
+		printf 'status    running after %s s\n' "$wait_s"
 		return 0
 	fi
-	printf 'status    ended within 3 s; the end of the log:\n'
+	local rc
+	rc="$(grep -A1 -F -- "# ---------- end $run_id ----------" "$log_path" | sed -n 's/.*exit code \([0-9][0-9]*\).*/\1/p')"
+	printf 'status    ended with exit code %s; the end of the log:\n' "${rc:-unknown}"
 	tail -n 20 "$log_path"
-	return 1
+	[ "${rc:-1}" = 0 ]
 }
 
-usage() { sed -n '2,/^# Everything runs inside/p' "$0" 2>/dev/null | sed '$d' | sed 's/^# \{0,1\}//'; }
+NL='
+'
+CR="$(printf '\r')"
+SECRET_RE='(hf_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[bpas]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|(token|secret|password|passwd|api_?key)[A-Za-z_]*=[^[:space:]]+)'
+
 err() { printf 'launch_run: %s\n' "$*" >&2; }
 
-# Quote a string for any shell of the sh family, the one tmux runs a window's command with included.
+# Quote a string for any shell of the sh family.
 sq() {
 	local s=${1//\'/\'\\\'\'}
 	printf "'%s'" "$s"
 }
 
-header_count() { if [ -f "$1" ]; then grep -c '^# started: ' "$1"; else echo 0; fi; }
-
-# A log is open when its last header has no footer below it.
-log_is_open() {
-	awk '/^# started: / { open = 1 } /^# finished: / { open = 0 } END { exit open ? 0 : 1 }' "$1"
+# git without the repository's own hooks, fsmonitor, or external diff tools.
+git_safe() {
+	local dir="$1"
+	shift
+	git -C "$dir" -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.quotepath=off -c color.ui=false "$@"
 }
 
-last_session_line() { grep '^# session: ' "$1" | tail -n 1; }
+tmux_major_at_least() {
+	local v
+	v="$(tmux -V 2>/dev/null | sed -n 's/^tmux \([0-9][0-9]*\).*/\1/p')"
+	[ -n "$v" ] && [ "$v" -ge "$1" ]
+}
+
+sha256_of() {
+	if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+	elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
+	else openssl dgst -sha256 "$1" | sed 's/.*= //'; fi
+}
+
+# The command of one run in an approved plan file, after checking where the file is and its hash.
+plan_command() {
+	local ws="$1" plan="$2" run="$3" want="$4" real got blocks rc
+	case "$run" in "" | *[!A-Za-z0-9_.-]*) err "A run name holds only letters, digits, ., - and _"; return 1 ;; esac
+	[ -f "$plan" ] && [ ! -L "$plan" ] || { err "No such plan file, or it is a symlink: $plan"; return 1; }
+	real="$(cd "$(dirname "$plan")" && pwd -P)/$(basename "$plan")"
+	case "$real" in
+		"$ws/docs/plans/"*) ;;
+		*) err "The plan file must be under docs/plans/ of this workspace: $plan"; return 1 ;;
+	esac
+	got="$(sha256_of "$real")"
+	if [ "$(printf '%s' "$got" | tr 'A-F' 'a-f')" != "$(printf '%s' "$want" | tr 'A-F' 'a-f')" ]; then
+		err "The plan file changed since it was approved: its SHA-256 is $got, not $want. A changed plan needs a new approval."
+		return 1
+	fi
+	blocks="$(awk -v run="$run" '
+		/^[ \t]*```/ {
+			if (inside) { inside = 0; next }
+			info = $0; sub(/^[ \t]*```/, "", info)
+			if (index(" " info " ", " run=" run " ")) { inside = 1; found++; next }
+		}
+		inside { print }
+		END { if (found != 1) exit (found == 0 ? 3 : 4) }
+	' "$real")"
+	rc=$?
+	case $rc in
+		0) ;;
+		3) err "The plan has no block for run $run: a fenced block whose info string holds run=$run"; return 1 ;;
+		*) err "The plan has more than one block for run $run"; return 1 ;;
+	esac
+	[ -n "$blocks" ] || { err "The plan's block for run $run is empty"; return 1; }
+	printf '%s' "$blocks"
+}
+
+# The state of a log's last run: "open<TAB>id<TAB>pid", "finished<code><TAB>id", or "none".
+log_state() {
+	awk -v OFS='\t' '
+		/^# run-id:/ { id = $3 } /^# session:/ { s = $0 }
+		/^# ---------- stdout/ { open = 1; oid = id; os = s; id = ""; fin = "" }
+		/^# ---------- end/ && open && (oid == "" || index($0, oid)) { open = 0; closing = 1; next }
+		closing && /^# finished:/ { fin = $0; closing = 0 }
+		END {
+			if (open) { pid = ""; if (match(os, /PID [0-9]+/)) pid = substr(os, RSTART + 4, RLENGTH - 4); print "open", oid, pid }
+			else if (fin != "") { code = fin; sub(/.*exit code /, "", code); print "finished" code, oid }
+			else print "none"
+		}' "$1"
+}
+
+# True when the PID is alive and its command line holds the run-id, so it is still that run's shell.
+run_alive() {
+	local pid="$1" id="$2"
+	kill -0 "$pid" 2>/dev/null || return 1
+	[ -n "$id" ] || return 0
+	ps -o command= -p "$pid" 2>/dev/null | grep -Fq -- "$id"
+}
+
+epoch_of() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"; }
+format_epoch() {
+	local z out
+	out="$(date -r "$1" '+%Y-%m-%d %H:%M:%S %z' 2>/dev/null || date -d "@$1" '+%Y-%m-%d %H:%M:%S %z')"
+	z="${out##* }"
+	printf '%s %s:%s' "${out% *}" "${z%??}" "${z#???}"
+}
+
+# Close a crashed run with a footer at the log's last write, before its restart.
+close_dead_run() {
+	local log="$1" id="$2" when
+	when="$(format_epoch "$(epoch_of "$log")")"
+	[ -z "$(tail -c 1 "$log")" ] || printf '\n' >>"$log"
+	{
+		printf '# ---------- end %s ----------\n' "$id"
+		printf '# finished:  %s (unknown), exit code unknown: closed by a restart at the log'"'"'s last write\n' "$when"
+	} >>"$log"
+}
 
 # The models of the given GPUs, such as `NVIDIA A100-SXM4-80GB`, or `unknown` without nvidia-smi.
 gpu_model() {
@@ -237,20 +456,27 @@ gpu_model() {
 	printf '%s' "${models:-unknown}"
 }
 
-# Save what makes the checkout dirty in the output folder, under a new name if an earlier diff differs.
+# Save what makes the checkout dirty, untracked files and binaries included, so that `git apply`
+# on the commit rebuilds it; under a new name if an earlier diff differs.
 save_diff() {
-	local code="$1" outputs="$2" file tmp
+	local code="$1" outputs="$2" file tmp f
 	mkdir -p "$outputs" || { err "Could not create $outputs"; return 1; }
-	tmp="$outputs/.git_diff.patch.tmp"
+	tmp="$(mktemp "$outputs/.git_diff.XXXXXX")" || { err "Could not write in $outputs"; return 1; }
 	{
-		git -C "$code" status --porcelain | sed -n 's/^?? /# untracked: /p'
-		git -C "$code" diff HEAD
-	} >"$tmp" || { err "Could not save the diff of $code"; return 1; }
+		git_safe "$code" diff --no-ext-diff --no-textconv --binary --src-prefix=a/ --dst-prefix=b/ HEAD
+		git_safe "$code" ls-files -o --exclude-standard -z | while IFS= read -r -d '' f; do
+			(cd "$code" && git -c core.fsmonitor= -c core.hooksPath=/dev/null -c color.ui=false \
+				diff --no-index --no-ext-diff --no-textconv --binary --src-prefix=a/ --dst-prefix=b/ /dev/null "$f")
+		done
+	} >"$tmp"
+	if grep -Eiq "$SECRET_RE" "$tmp"; then
+		err "Warning: the saved diff seems to hold a secret; it is readable by you only. Check $outputs."
+	fi
 	file="$outputs/git_diff.patch"
 	if [ -f "$file" ] && ! cmp -s "$tmp" "$file"; then
 		file="$outputs/git_diff-$(date +%Y%m%d-%H%M%S).patch"
 	fi
-	mv "$tmp" "$file"
+	mv "$tmp" "$file" && chmod 600 "$file"
 	printf '%s' "$file"
 }
 

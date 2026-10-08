@@ -1,22 +1,32 @@
 #!/usr/bin/env python3
-"""Count the GPU hours that runs took, from the headers and footers of their logs
+"""Count the single-GPU hours that runs took, from the headers and footers of their logs
 (docs/AGENTS/log_template.md), to count what an idea's budget has used.
 
-Usage: gpu_hours.py [--json] <log or folder>...
+Usage: gpu_hours.py [--json] [--since TIME] [--until TIME] <log or folder>...
 
-    Give the log folders of the idea's experiments, such as logs/<date>-<name>/, or single logs. Each start
-    of a run in a log, its first launch or a restart, counts from its `started` line to its `finished` line,
-    times the number of GPU ids on its `resources` line. A start with no footer counts up to the next start
-    in the same log, if any, as an upper bound for a run that was killed, and else up to the log's last
-    write, for a run that is still going or was killed. A start whose GPU ids cannot be read is flagged and
-    left out of the totals.
+    Give the log folders of the idea's experiments, such as logs/<date>-<name>/, or single logs.
+    Every regular file under a folder that holds a log header counts, whatever its name.
 
-    --json   Print the counts as JSON instead of tables.
+    A run counts from its `started` line to its `finished` line, times the number of GPUs on its
+    `resources` line. Only a real header counts: its lines come before the stdout marker, and when it
+    has a `run-id`, only an end marker with the same id closes it, so a program's own output cannot
+    open or close a run. A run with no footer counts up to now while its process is alive; otherwise up
+    to the next start in the same log, as an upper bound, or else to the log's last write.
 
-Only the logs on this machine count: run it on every machine that ran the idea's experiments, and add up.
-In remote mode, run it on the remote host:
+    Hours that cannot be counted are never dropped silently: a run whose GPUs cannot be read, an
+    unreadable time, or a file that cannot be read is listed, its hours are reported apart as
+    unknown, and the script exits with code 3.
+
+    --json         Print JSON instead of tables.
+    --since TIME   Count only the hours after TIME, such as `2026-10-08 22:00 +04:00`.
+    --until TIME   Count only the hours before TIME.
+
+Run it where the logs are, on every machine that ran the idea's experiments; the totals are kept
+apart per machine, by the name on each `resources` line, so logs synced from another machine are
+counted once. In remote mode:
     vrl_ssh.sh script <alias> --workspace <dir> -- gpu_hours.py logs/<date>-<name>/
 
+Exit codes: 0 counted everything; 2 bad arguments; 3 some hours could not be counted.
 Needs Python 3.6 or later, and nothing outside its standard library.
 """
 
@@ -26,177 +36,365 @@ import os
 import re
 import sys
 
-TIME = re.compile(r"(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}(?::\d{2})?)\s*([+-]\d{2}:?\d{2}|Z)?")
-GPU_IDS = re.compile(r"\bGPUs?\s+(\d[\d,\s-]*)")
+KEY = re.compile(r"^\s*#\s*([A-Za-z-]+)\s*:\s?(.*)$")
+STDOUT_MARK = re.compile(r"#\s*-{3,}\s*stdout\s*\+\s*stderr\s*-{3,}")
+END_MARK = re.compile(r"#\s*-{3,}\s*end\b\s*([0-9a-fA-F]*)\s*-*")
+TIME = re.compile(
+    r"(\d{4}-\d{2}-\d{2})[ T](\d{1,2}:\d{2}(?::\d{2})?)(\.\d+)?\s*"
+    r"(Z|UTC|GMT|[+-]\d{2}(?::?\d{2})?)?(?![\d:])",
+    re.IGNORECASE,
+)
+DURATION = re.compile(r"\((\d+):(\d{2}):(\d{2})\)")
+GPU_WORDS = re.compile(r"\bGPUs?\b\s*[:=]?\s*((?:\d+(?:\s*-\s*\d+)?)(?:\s*,\s*\d+(?:\s*-\s*\d+)?)*)(?![\w.])",
+                       re.IGNORECASE)
+CVD = re.compile(r"CUDA_VISIBLE_DEVICES\s*=\s*['\"]?((?:\d+(?:-\d+)?)(?:,\d+(?:-\d+)?)*)", re.IGNORECASE)
+N_GPUS = re.compile(r"\b(\d+)\s*[x×]?\s*GPUs?\b", re.IGNORECASE)
+NO_GPU = re.compile(r"\bno\s+GPUs?\b", re.IGNORECASE)
+GPU_COMMAND = re.compile(r"CUDA_VISIBLE_DEVICES|torchrun|--nproc[_-]per[_-]node|\baccelerate\b|\bdeepspeed\b",
+                         re.IGNORECASE)
+PID = re.compile(r"\bPID\s+(\d+)")
+SNIFF_BYTES = 4096
+NOTES = {}
 
 
-def parse_time(text):
-    m = TIME.search(text)
+def parse_time(text, default_tz=None):
+    """A datetime from text such as `2026-10-08 12:00:00 +04:00`; naive only when no zone is known."""
+    m = TIME.search(text or "")
     if not m:
         return None
-    day, clock, zone = m.groups()
-    if len(clock) == 5:
+    day, clock, fraction, zone = m.groups()
+    if clock.count(":") == 1:
         clock += ":00"
-    t = datetime.datetime.strptime(day + " " + clock, "%Y-%m-%d %H:%M:%S")
-    if zone and zone != "Z":
-        sign = 1 if zone[0] == "+" else -1
-        digits = zone[1:].replace(":", "")
-        offset = datetime.timedelta(hours=int(digits[:2]), minutes=int(digits[2:]))
-        return t.replace(tzinfo=datetime.timezone(sign * offset))
-    if zone == "Z":
-        return t.replace(tzinfo=datetime.timezone.utc)
-    return t  # No offset: compared only with other times of the same log.
-
-
-def gpu_count(resources):
-    """The number of GPU ids on a resources line, such as `box1, GPU 0,1 (A100)`; 0 for `no GPU`."""
-    if re.search(r"\bno GPUs?\b", resources, re.IGNORECASE):
-        return 0
-    m = GPU_IDS.search(resources)
-    if not m:
+    try:
+        t = datetime.datetime.strptime(day + " " + clock, "%Y-%m-%d %H:%M:%S")
+        if fraction:
+            t = t.replace(microsecond=int(round(float(fraction) * 1e6)) % 1000000)
+        if zone:
+            z = zone.upper()
+            if z in ("Z", "UTC", "GMT"):
+                return t.replace(tzinfo=datetime.timezone.utc)
+            sign = 1 if zone[0] == "+" else -1
+            digits = zone[1:].replace(":", "")
+            hours, minutes = int(digits[:2]), int(digits[2:] or 0)
+            if hours > 23 or minutes > 59:
+                return None
+            return t.replace(tzinfo=datetime.timezone(sign * datetime.timedelta(hours=hours, minutes=minutes)))
+    except ValueError:
         return None
-    count = 0
-    for part in re.split(r"[,\s]+", m.group(1).strip()):
+    return t.replace(tzinfo=default_tz) if default_tz else t
+
+
+def expand_ids(text):
+    """The GPU ids in text such as `0,1` or `0-3`, or None if it is not a list of ids."""
+    ids = []
+    for part in re.split(r"\s*,\s*", text.strip()):
         if not part:
             continue
         if "-" in part:
-            low, _, high = part.partition("-")
+            low, _, high = (p.strip() for p in part.partition("-"))
             if not (low.isdigit() and high.isdigit()) or int(high) < int(low):
                 return None
-            count += int(high) - int(low) + 1
+            ids.extend(range(int(low), int(high) + 1))
         elif part.isdigit():
-            count += 1
+            ids.append(int(part))
         else:
             return None
-    return count or None
+    return ids or None
 
 
-def read_starts(path):
-    """Every start of a run in one log: its start, end, GPU count, and notes."""
-    starts = []
-    resources = None
-    current = None
-    after_end = False
-    with open(path, errors="replace") as f:
-        for line in f:
-            if line.startswith("# resources:"):
-                resources = line.split(":", 1)[1].strip()
-            elif line.startswith("# started:"):
-                current = {
-                    "started": parse_time(line),
-                    "finished": None,
-                    "gpus": gpu_count(resources) if resources is not None else None,
-                    "notes": [],
-                }
-                if current["started"] is None:
-                    current["notes"].append("unreadable started line")
-                starts.append(current)
-                resources = None
-                after_end = False
-            elif line.startswith("# ---------- end ----------"):
-                after_end = True
-            elif line.startswith("# finished:") and after_end and current is not None:
-                current["finished"] = parse_time(line)
-                after_end = False
-    last_write = datetime.datetime.fromtimestamp(os.path.getmtime(path), datetime.timezone.utc)
-    for i, s in enumerate(starts):
-        if s["finished"] is not None or s["started"] is None:
-            continue
-        if i + 1 < len(starts) and starts[i + 1]["started"] is not None:
-            s["finished"] = starts[i + 1]["started"]
-            s["notes"].append("no footer: counted up to the next start, an upper bound")
-        else:
-            start = s["started"]
-            s["finished"] = last_write if start.tzinfo else last_write.astimezone().replace(tzinfo=None)
-            s["notes"].append("no footer: counted up to the log's last write; still running or killed")
-    for s in starts:
-        if s["gpus"] is None:
-            s["notes"].append("GPU ids not found on the resources line: left out of the totals")
-    return starts
+def read_gpus(resources, command):
+    """(GPU ids or None, GPU count or None, note) from a header's resources and command lines."""
+    for pattern in (GPU_WORDS, CVD):
+        for source in (resources, command):
+            m = pattern.search(source or "")
+            if m:
+                ids = expand_ids(m.group(1))
+                if ids:
+                    return ids, len(set(ids)), None
+    m = N_GPUS.search(resources or "")
+    if m and not NO_GPU.search(resources or ""):
+        return None, int(m.group(1)), None
+    if NO_GPU.search(resources or ""):
+        if GPU_COMMAND.search(command or ""):
+            return None, None, "the header says no GPU, but the command looks like it uses GPUs"
+        return [], 0, None
+    return None, None, "GPUs not found on the resources line"
 
 
-def hours(s):
-    if s["started"] is None or s["finished"] is None:
-        return 0.0
+def machine_of(resources):
+    name = (resources or "").split(",")[0].strip()
+    return name or "unknown machine"
+
+
+def pid_runs(pid, run_id, log_path):
+    """True when the PID is alive and, as far as `ps` can tell, still the run's own shell."""
     try:
-        return max(0.0, (s["finished"] - s["started"]).total_seconds() / 3600)
-    except TypeError:  # One time has a UTC offset and the other has none.
-        return 0.0
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        pass
+    except OSError:
+        return False
+    try:
+        with os.popen("ps -o command= -p %d 2>/dev/null" % pid) as f:
+            command = f.read()
+    except OSError:
+        return True
+    if not command.strip():
+        return False
+    return (run_id and run_id in command) or os.path.basename(log_path) in command
 
 
-def collect(targets):
-    groups = []
-    for target in targets:
-        if os.path.isdir(target):
-            logs = sorted(
-                os.path.join(root, name)
-                for root, _, names in os.walk(target)
-                for name in names
-                if name.endswith(".log")
-            )
-            name = os.path.basename(os.path.normpath(target))
-        elif os.path.isfile(target):
-            logs = [target]
-            name = os.path.basename(os.path.dirname(os.path.abspath(target)))
-        else:
-            raise SystemExit("gpu_hours: no such log or folder: " + target)
-        rows = []
-        for log in logs:
-            starts = read_starts(log)
-            if not starts:
+HEADER_KEYS = ("command", "purpose", "code", "outputs", "resources", "run-id", "session", "started")
+
+
+def read_log(path):
+    """The runs that start in one log. A start counts only inside a complete header, a run of header
+    lines that ends at the stdout marker; a run with a run-id ends only at an end marker with its id."""
+    runs, block, current = [], None, None
+    with open(path, "r", errors="replace") as f:
+        lines = f.read().splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i].rstrip("\r")
+        if current is not None:
+            e = END_MARK.search(line)
+            want = current.get("run-id", "")
+            if e and (not want or e.group(1).lower() == want.lower()):
+                for j in range(i + 1, min(i + 3, len(lines))):
+                    k = KEY.match(lines[j])
+                    if k and k.group(1).lower() == "finished":
+                        current["finished"] = k.group(2).strip()
+                        i = j
+                        break
+                current, block = None, None
+                i += 1
                 continue
-            counted = [s for s in starts if s["gpus"] is not None]
-            rows.append({
-                "log": log,
-                "starts": len(starts),
-                "gpus": sorted({s["gpus"] for s in counted}),
-                "hours": round(sum(hours(s) for s in starts), 2),
-                "gpu_hours": round(sum(hours(s) * s["gpus"] for s in counted), 2),
-                "notes": sorted({n for s in starts for n in s["notes"]}),
-            })
-        groups.append({
-            "folder": name,
-            "logs": rows,
-            "gpu_hours": round(sum(r["gpu_hours"] for r in rows), 2),
+        m = KEY.match(line)
+        # A header opens with a known field; inside it, any field counts, such as a plan line.
+        if m and (m.group(1).lower() in HEADER_KEYS or (block is not None and m.group(1).lower() != "finished")):
+            key = m.group(1).lower()
+            if block is None:
+                block = {}
+            block[key] = m.group(2).strip()
+            block["_last"] = key
+        elif block is not None and block.get("_last") == "command" and line.startswith("#   "):
+            block["command"] += "\n" + line.lstrip("#").strip()
+        elif block is not None and STDOUT_MARK.search(line):
+            if "started" in block:
+                block.pop("_last", None)
+                block["notes"] = []
+                runs.append(block)
+                current = block
+            block = None
+        else:
+            block = None
+        i += 1
+    return runs
+
+
+def count_log(path, since, until, now):
+    rows = []
+    runs = read_log(path)
+    default_tz = None
+    for r in runs:
+        t = parse_time(r.get("started"))
+        if t is not None and t.tzinfo is not None:
+            default_tz = t.tzinfo
+            break
+    if default_tz is None:
+        default_tz = datetime.datetime.now().astimezone().tzinfo
+    last_write = datetime.datetime.fromtimestamp(os.path.getmtime(path), datetime.timezone.utc)
+    previous_gpus = None
+    for n, r in enumerate(runs):
+        notes = r["notes"]
+        start = parse_time(r.get("started"), default_tz)
+        bare = parse_time(r.get("started"))
+        if bare is not None and bare.tzinfo is None:
+            notes.append("start time has no UTC offset: read in the log's time zone")
+        end = None
+        finished = r.get("finished")
+        if finished is not None:
+            end = parse_time(finished, default_tz)
+            if end is None or start is None or end < start:
+                d = DURATION.search(finished)
+                if d and start is not None:
+                    end = start + datetime.timedelta(hours=int(d.group(1)), minutes=int(d.group(2)),
+                                                     seconds=int(d.group(3)))
+                    notes.append("end taken from the footer's duration")
+            if "unknown" in finished.lower():
+                notes.append("closed by a restart at the log's last write: an upper bound")
+        else:
+            pid = PID.search(r.get("session", ""))
+            if n == len(runs) - 1 and pid and pid_runs(int(pid.group(1)), r.get("run-id", ""), path):
+                end = now
+                notes.append("running: counted up to now")
+            elif n + 1 < len(runs) and parse_time(runs[n + 1].get("started"), default_tz):
+                end = parse_time(runs[n + 1].get("started"), default_tz)
+                notes.append("no footer: counted up to the next start, an upper bound")
+            else:
+                end = last_write
+                notes.append("no footer and no live process: counted up to the log's last write")
+        ids, count, gpu_note = read_gpus(r.get("resources"), r.get("command"))
+        if count is None and previous_gpus is not None:
+            ids, count = previous_gpus
+            gpu_note = "GPUs taken from the previous start in this log"
+        if gpu_note:
+            notes.append(gpu_note)
+        if count is not None:
+            previous_gpus = (ids, count)
+        hours = None
+        if start is None or end is None:
+            notes.append("unreadable start or end time")
+        else:
+            a, b = start, end
+            if since is not None:
+                a = max(a, since)
+            if until is not None:
+                b = min(b, until)
+            hours = max(0.0, (b - a).total_seconds() / 3600)
+        rows.append({
+            "log": path,
+            "machine": machine_of(r.get("resources")),
+            "run_id": r.get("run-id"),
+            "started": r.get("started"),
+            "hours": hours,
+            "gpu_ids": ids,
+            "gpus": count,
+            "gpu_hours": hours * count if hours is not None and count is not None else None,
+            "notes": notes,
         })
-    return groups
+    return rows
+
+
+def has_header(path):
+    try:
+        with open(path, "rb") as f:
+            head = f.read(SNIFF_BYTES)
+    except OSError:
+        return False
+    return b"started" in head and (b"stdout" in head or b"command" in head)
+
+
+def find_logs(target, problems):
+    if os.path.isfile(target):
+        return [target]
+    if not os.path.isdir(target):
+        problems.append({"path": target, "note": "no such log or folder"})
+        return []
+    found, seen = [], set()
+
+    def onerror(err):
+        problems.append({"path": err.filename, "note": "cannot read: %s" % err.strerror})
+
+    for root, dirs, names in os.walk(target, onerror=onerror, followlinks=True):
+        real = os.path.realpath(root)
+        if real in seen:
+            dirs[:] = []
+            continue
+        seen.add(real)
+        for name in sorted(names):
+            p = os.path.join(root, name)
+            if not os.path.isfile(p):
+                if os.path.islink(p):
+                    problems.append({"path": p, "note": "broken symlink"})
+                continue
+            if has_header(p):
+                found.append(p)
+    return sorted(set(found))
+
+
+def shown(path):
+    """A path relative to the current folder when it lies inside it, else as it is."""
+    rel = os.path.relpath(path)
+    return path if rel.startswith("..") else rel
 
 
 def main(argv):
-    as_json = False
-    targets = []
-    for arg in argv:
-        if arg in ("-h", "--help"):
+    as_json, since, until, targets = False, None, None, []
+    args = list(argv)
+    while args:
+        a = args.pop(0)
+        if a in ("-h", "--help"):
             print(__doc__.strip())
             return 0
-        if arg == "--json":
+        if a == "--json":
             as_json = True
-        elif arg.startswith("-"):
-            print("gpu_hours: unknown argument: " + arg, file=sys.stderr)
+        elif a in ("--since", "--until"):
+            if not args:
+                print("gpu_hours: %s needs a time" % a, file=sys.stderr)
+                return 2
+            t = parse_time(args.pop(0), datetime.datetime.now().astimezone().tzinfo)
+            if t is None:
+                print("gpu_hours: cannot read the time after %s" % a, file=sys.stderr)
+                return 2
+            if a == "--since":
+                since = t
+            else:
+                until = t
+        elif a.startswith("-"):
+            print("gpu_hours: unknown argument: " + a, file=sys.stderr)
             return 2
         else:
-            targets.append(arg)
+            targets.append(a)
     if not targets:
         print("gpu_hours: give the log folders of the idea's experiments", file=sys.stderr)
         return 2
-    groups = collect(targets)
-    total = round(sum(g["gpu_hours"] for g in groups), 2)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    problems, rows = [], []
+    for target in targets:
+        for path in find_logs(target, problems):
+            try:
+                found = count_log(path, since, until, now)
+            except (OSError, UnicodeError) as err:
+                problems.append({"path": path, "note": "cannot read: %s" % err})
+                continue
+            if not found:
+                problems.append({"path": path, "note": "no complete header: not counted"})
+            rows.extend(found)
+    machines, by_gpu = {}, {}
+    known = sum(r["gpu_hours"] for r in rows if r["gpu_hours"] is not None)
+    unknown = sum(r["hours"] or 0 for r in rows if r["gpu_hours"] is None)
+    for r in rows:
+        m = machines.setdefault(r["machine"], {"gpu_hours": 0.0, "unknown_hours": 0.0})
+        if r["gpu_hours"] is None:
+            m["unknown_hours"] += r["hours"] or 0
+        else:
+            m["gpu_hours"] += r["gpu_hours"]
+            for g in r["gpu_ids"] or []:
+                key = "%s GPU %d" % (r["machine"], g)
+                by_gpu[key] = by_gpu.get(key, 0.0) + r["hours"]
+    incomplete = bool(problems) or any(r["gpu_hours"] is None for r in rows)
     if as_json:
-        print(json.dumps({"groups": groups, "total_gpu_hours": total}, indent=2))
-        return 0
-    for g in groups:
-        print("**%s**: %.2f GPU hours\n" % (g["folder"], g["gpu_hours"]))
-        print("| Log | Starts | GPUs | Hours | GPU hours | Notes |")
-        print("|---|---|---|---|---|---|")
-        for r in g["logs"]:
-            print("| %s | %d | %s | %.2f | %.2f | %s |" % (
-                os.path.basename(r["log"]), r["starts"], ", ".join(str(n) for n in r["gpus"]) or "?",
-                r["hours"], r["gpu_hours"], "; ".join(r["notes"])))
-        if not g["logs"]:
-            print("| (no log with a header) | | | | | |")
-        print()
-    print("Total: %.2f GPU hours" % total)
-    return 0
+        print(json.dumps({
+            "runs": rows, "machines": machines, "by_gpu": by_gpu, "problems": problems,
+            "single_gpu_hours": round(known, 2), "unknown_hours": round(unknown, 2),
+        }, indent=2, default=str))
+        return 3 if incomplete else 0
+    print("| Log | Machine | Started | GPUs | Hours | Single-GPU hours | Notes |")
+    print("|---|---|---|---|---|---|---|")
+    for r in rows:
+        print("| %s | %s | %s | %s | %s | %s | %s |" % (
+            shown(r["log"]).replace("|", "\\|"), r["machine"].replace("|", "\\|"),
+            (r["started"] or "?").replace("|", "\\|"),
+            "?" if r["gpus"] is None else (",".join(map(str, r["gpu_ids"])) if r["gpu_ids"] else str(r["gpus"])),
+            "?" if r["hours"] is None else "%.2f" % r["hours"],
+            "?" if r["gpu_hours"] is None else "%.2f" % r["gpu_hours"],
+            "; ".join(r["notes"]).replace("|", "\\|")))
+    for p in problems:
+        print("| %s | | | | | | %s |" % (p["path"], p["note"]))
+    print()
+    for name, m in sorted(machines.items()):
+        line = "%s: %.2f single-GPU hours" % (name, m["gpu_hours"])
+        if m["unknown_hours"]:
+            line += ", plus %.2f hours with unknown GPUs" % m["unknown_hours"]
+        print(line)
+    print("Total: %.2f single-GPU hours" % known)
+    if incomplete:
+        print("Incomplete: %.2f hours with unknown GPUs, and %d files not counted; see the notes above."
+              % (unknown, len(problems)))
+    return 3 if incomplete else 0
 
 
 if __name__ == "__main__":
