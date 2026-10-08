@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Fake mount: prints the lines in $FAKE_SSH_STATE/mounts.
+cat "${FAKE_SSH_STATE:?}/mounts" 2>/dev/null

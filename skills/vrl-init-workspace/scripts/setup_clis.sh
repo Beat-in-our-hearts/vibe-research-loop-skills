@@ -265,10 +265,10 @@ latest_version() {
 
 # Whether version $1 is older than version $2, field by field.
 version_lt() {
-	local IFS=. i x y
+	local i x y
 	local -a a b
-	a=(${1%%-*})
-	b=(${2%%-*})
+	IFS=. read -r -a a <<<"${1%%-*}"
+	IFS=. read -r -a b <<<"${2%%-*}"
 	for i in 0 1 2; do
 		x="${a[i]:-0}"
 		y="${b[i]:-0}"
