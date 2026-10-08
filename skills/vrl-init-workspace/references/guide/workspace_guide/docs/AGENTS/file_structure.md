@@ -16,7 +16,7 @@ workspace/                       # the directory agents are launched from
 ├── docs/                        # Markdown documents
 │   ├── AGENTS/                  # basic rules for agents, one topic per file
 │   └── plans/
-│       └── <date>-<name>.md     # experiment plan; the Notion Plan file row points here
+│       └── <date>-<name>.md     # experiment plan: a link to its Notion page, each run's config and launch command
 ├── logs/                        # logs of long-running commands
 │   ├── <date>-<name>/
 │   │   └── <run>.log            # one log per run of an experiment
@@ -25,7 +25,7 @@ workspace/                       # the directory agents are launched from
 │   ├── <date>-<name>/
 │   │   ├── <run>/               # checkpoints, metrics.csv, config snapshots
 │   │   └── figures/             # result figures (PDF and PNG) with their plotting scripts
-│   └── findings/<date>-<id>/    # a finding's figures with their plotting scripts
+│   └── findings/<date>-<id>/    # a finding's figures with their plotting scripts, and the raw results of measurements
 ├── tests/                       # test code, only when needed
 │   └── <repo>/                  # named after the repository under test
 │       └── <topic>/             # grouped by what is tested
@@ -44,7 +44,7 @@ workspace/                       # the directory agents are launched from
 | `worktrees/` | One checkout of `main_repo` per branch, named after the branch with any `/` replaced by `-`. The `main_repo/` rules apply. |
 | `ref_repos/` | One folder per repository, named as upstream. Record its URL and commit in the Code row of every experiment that uses it. Change it only on a local branch, and never push. |
 | `data/` | Read-only. Save processed data as a new version. |
-| `docs/` | Markdown only. Change `AGENTS/` only when the user asks. Keep one plan per experiment in `plans/`, consistent with sections 1–3 of its Notion page; put other documents in subfolders by topic. |
+| `docs/` | Markdown only. Change `AGENTS/` only when the user asks. Keep one plan per experiment in `plans/`, holding each run's config file and launch command for its Notion page; put other documents in subfolders by topic. |
 | `logs/` | One log per long-running command, named as in the tree. |
 | `runs/` | Never overwrite or delete a finished run; give a rerun a new run name. |
 | `tests/` | Test code only: a test writes its outputs to `tmp/tests/<repo>/<topic>/` and its log to `logs/`; an output kept as evidence is a run and belongs in `runs/`. Write no tests by default: verify with a short smoke run (a few steps on a small subset), logged in `logs/`. Write a test only when the user asks, or to pin down a bug in shared code such as data processing, losses, or metrics. Add tests to `main_repo`'s own suite only when the user asks. |
