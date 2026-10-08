@@ -59,9 +59,10 @@ Follow "Set up a workspace" in `<guide>/workspace_guide/workspace_prompts.md`, w
 
 ## Notion and Hugging Face in remote mode
 
-Use this with "Set up Notion" and "Set up Hugging Face" of the guide, or their "Add a machine" sections, on a remote-mode machine.
+Use this with "Set up Notion" or "Set up Feishu", and "Set up Hugging Face", or their "Add a machine" sections, on a remote-mode machine.
 
 - **Notion.** `ntn` runs on the local machine. If that machine has no OS keychain, as on a headless server, `ntn` stores its token in a file instead: the skill's `scripts/setup_clis.sh` detects this and logs in with `NOTION_KEYRING=0`. Ask the user to export `NOTION_KEYRING=0` in their shell profile, run `ntn` with it from then on, and record this under Notion in `docs/AGENTS/remote.md`.
+- **Feishu.** `lark-cli` runs on the local machine too. Without an OS keychain it keeps its login in encrypted files under `~/.local/share`, so it needs no setting.
 - **Hugging Face.** Run every `hf` command on the remote host, which has no browser, with the remote workspace's `.env` loaded. Install and log in to `hf` there with the skill's `scripts/setup_clis.sh`, through the SSH master, with `--workspace` set to the remote workspace so that it loads that `.env`; the login prints a URL and a code, which the user opens on any machine with a browser.
 
 ## Add a remote machine
