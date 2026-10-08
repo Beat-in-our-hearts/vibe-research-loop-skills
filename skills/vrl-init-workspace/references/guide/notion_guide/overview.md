@@ -47,8 +47,8 @@ AI agents draft and run; humans decide at these points. Agents never set these v
 |---|---|---|
 | Human Approved | Ideas | Feasibility reviewed; the idea may be implemented. Not a verdict: findings can still reject it. |
 | Budget | Ideas | The limits at which the agent must stop iterating on an idea and report. |
-| Human Approved | Experiments | The plan in sections 1–3 is approved, including any deviation from the idea's Planned test and the writes its Detail plan lists; runs start only after that. |
-| Code review | Experiments, Results and analysis | A human reviewed the AI-generated code before the results count. |
+| Human Approved | Experiments | The plan in sections 1 and 2 is approved, including any deviation from the idea's Planned test and the writes its steps list; runs start only after that. |
+| Code review | Experiments, Results | A human reviewed the AI-generated code before the results count. |
 | Confirmed / Overturned | Findings | The claim counts as knowledge, or a later finding replaced it. |
 | Human Approved | Papers | The paper passed the admission rules and stays in the library. |
 | Direction change | Project page | Decided by confirming a finding that calls for a change of direction; only then does the agent add the Direction Log entry. |

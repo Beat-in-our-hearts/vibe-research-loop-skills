@@ -5,59 +5,47 @@
 | Database | Ideas |
 | Default properties | Status = Backlog · Human Approved = unchecked |
 
-Everything below the line is the body of every new page in the database: the agent that creates a page writes it in, with the default properties above, so the database needs no template in Notion. The opening quote is for that agent, who follows it and leaves it out of the page. Text in *italics* is gray italic text in Notion: those lines are instructions. Each starts with who acts and when — Agent (on creation), Agent (during runs), Agent (after runs), Agent (after review), or Human (review) — and says where the content comes from. The `<aside>` block is a callout with the 💡 icon and a blue background.
+Everything below the line is the body of a new page in the database. The agent that creates a page gives it the default properties above and writes each part of the body only when it fills it, at its place below, so the database needs no template in Notion. The callout comes first: it is written with the sections and rewritten in place each time the page goes to review. Text in *italics* is instructions for that agent: they stay in this file and never go into the page, and neither does the opening quote; plain text outside the italics goes into the page as it is. The `<aside>` block is a callout with the 💡 icon and a blue background.
 
 ---
 
-> Capture one idea so a human can judge its feasibility before anything is built; a human ticks Human Approved after the review. Set a short, unique ID, e.g. `lr-warmup`, write the hypothesis in short as the page title, at most 15 words, or 20 characters in Chinese, and write the line of thought before anything else: every section below follows from it.
+> Capture one idea so a human can judge its feasibility before anything is built. Set a short, unique ID, e.g. `lr-warmup`, and write the hypothesis in short as the page title, at most 15 words, or 20 characters in Chinese. Draft the line of thought first: every section follows from it, and none repeats it.
 
 <aside>
 💡 **Line of thought**
 
-*Agent (on creation): five steps of reasoning, in plain words and in this order, written before the sections. Goal: what this idea is for. Observations: what was seen, with its numbers and sources, that prompted it. Hypothesis: the guess, and why it would explain the observations. Test: the smallest test that can tell, and how it grows if the first results are promising. Decision: what result supports or rejects the guess, and what comes next either way.*
-
-- **Goal:** *…*
-- **Observations:** *…*
-- **Hypothesis:** *…*
-- **Test:** *…*
-- **Decision:** *…*
+- **You decide:** whether the idea may be built: tick Human Approved, and set the limits in section 3. *Then, in a few words, the full test's single-GPU hours against the proposed compute limit.*
+- **Goal:** *one sentence: what this idea is for.*
+- **Observations:** *one sentence: what prompted it; its numbers and sources go in section 1.*
+- **Hypothesis:** *the guess, stated so that it can be falsified, and why it would explain the observations.*
+- **Test:** *one sentence: the smallest test that can tell, and how it grows if the first results are promising.*
+- **Decision:** *one sentence: what each outcome leads to.*
+- **Changed:** *what is new since the user's last review, or "first review".*
 </aside>
 
-## 1. Motivation
+## 1. Evidence and assumptions
 
-*Agent (on creation): the evidence behind the line of thought, one row per source, in its order. Take sources from the Findings database, the Literature Library, earlier experiments, or the user's own words, and @mention the Notion pages among them in the Related property. In What it shows, give the fact with its numbers, then → what it means for the hypothesis. When a source compares several settings, put them in a small table below with a bold caption, e.g. **Table 1.**, rather than in one long cell.*
+*One row per assumption the hypothesis rests on, in the order of the line of thought. Evidence: the fact with its numbers, then its source: a finding, a paper, an earlier experiment, or the user's words; @mention the Notion pages among them, and add them to Related. Breaks if: the result that would prove the assumption wrong. Below the table, explain the mechanism in at most three sentences, adding a formula only if it makes the argument sharper. When a source compares several settings, give them in a small table with a bold caption, e.g. **Table 1.**, rather than in one cell.*
 
-| Source | What it shows |
-|---|---|
-| *…* | *…* |
-
-## 2. Feasibility analysis
-
-*Agent (on creation): one row per key assumption, with why we believe it and what would break it. Below the table, explain the mechanism in plain words; add a formula only after the words, and only if it makes the argument sharper.*
-
-| Assumption | Why we believe it | What would break it |
+| Assumption | Evidence | Breaks if |
 |---|---|---|
 | *…* | *…* | *…* |
 
-## 3. Planned test
+## 2. Planned test
 
-*Agent (on creation): the plan a human approves; experiments must follow it or record their deviations. Use exactly the settings the user named, such as the model, its size, and the data; check them against measured sources, and ask before changing one. Baseline says what is reused and what is rerun. Success criteria is the pass/fail threshold and must be written before anything runs, e.g. "+1% over the baseline, mean of 3 seeds"; define every metric in one plain sentence where it first appears, with the values a healthy run and a failed run show when they are known.*
+*The test a human approves; every experiment follows it or lists its deviations. Use exactly the settings the user named, such as the model, its size, and the data; check them against measured sources, and ask before changing one. Success criteria: the pass/fail threshold, fixed before anything runs, e.g. "+1% over the baseline, mean of 3 seeds"; define every metric in one plain sentence where it first appears, with the values a healthy run and a failed run show when they are known.*
 
-| Item | Plan |
-|---|---|
-| Baseline | *…* |
-| Change from the baseline | *…* |
-| Success criteria | *…* |
+**Success criteria:** *…*
 
-**Groups.** *Agent (on creation): every group the test compares, the baseline and any control included: what it changes, whether it needs training, how it is evaluated, and its seeds. Below the table, say why each control is there.*
+**Groups.** *Every group the test compares, the baseline first and any control included. Setting: for the baseline, what it is; for every other group, only what it changes. Training: whether it trains, and for the baseline what is reused and what is rerun. Evaluation: how it is evaluated. Why: for a control only, the other explanation it rules out.*
 
-| Group | Setting | Training | Evaluation | Seeds |
-|---|---|---|---|---|
-| *…* | *…* | *…* | *…* | *…* |
+| Group | Setting | Training | Evaluation | Seeds | Why |
+|---|---|---|---|---|---|
+| *…* | *…* | *…* | *…* | *…* | *…* |
 
-## 4. Stages and budget
+## 3. Stages and budget
 
-*Agent (on creation): one row per stage, from the smallest test that can show whether the idea is promising to the full test. What it tests: its groups and seeds in a few words. Single GPU and This machine: its time on one GPU and on the GPUs of the current machine in `docs/AGENTS/machine.md`, saying how many. Go on when: the condition the next stage needs. Below the table, give in one sentence what the times are based on, such as a log or an earlier report, or that they are a guess. Then propose the limits; Human (review) sets them. Each experiment runs one stage, or the part of it that fits the budget left.*
+*One row per stage, from the smallest test that can show whether the idea is promising to the full test; each experiment runs one stage, or the part of it that fits the budget left. What it tests: its groups and seeds in a few words. Single GPU and This machine: its time on one GPU and on the GPUs of the current machine in `docs/AGENTS/machine.md`, saying how many. Go on when: the condition the next stage needs. Basis: in one sentence, what the times rest on, such as a log or an earlier report, or that they are a guess. Then propose each limit in the Limit column; the user sets it there.*
 
 | Stage | What it tests | Single GPU | This machine | Go on when |
 |---|---|---|---|---|
