@@ -38,12 +38,16 @@ The tables have the fields and options of the Notion databases, with the same En
 | Use `ntn`, and look up its usage live | Use `lark-cli`, and look up its usage live: `lark-cli --help`, `lark-cli <domain> --help`, `lark-cli schema <method>`. Prefer the shortcuts (`base +…`, `docs +…`, `wiki +…`); use `lark-cli api` for the rest. Run every command with `< /dev/null`, read the JSON `{ok, data}` it prints, and stop and ask the user when it exits with code 10, which marks a risky write |
 | Take the IDs from `docs/notion/ids.md`, or find them by title | Take them from `docs/feishu/ids.md`. If it is missing, find them by exact title with `base +title-resolve` and the wiki node list, and record them there |
 | Query a database | `base +record-list` with a filter on the fields |
-| Create a page with its properties and its body from a template | Create the record with its fields; create its doc under the parent doc from the same template, with the record's title; then set the record's `Page`. Callouts in a template are callout blocks |
+| Create a page with its properties and its body from a template | Create the record with its fields; create its doc under the parent doc, with the record's title and only the parts filled now, the callout first; then set the record's `Page` |
+| A page's properties, which Notion shows above the body | A doc does not show its record: the callout's decide line names the record's table and ID and links the Base, where the user ticks Human Approved or sets Status |
+| A callout | `<callout emoji="<the template's icon>" background-color="light-gray">` for 📋, `light-blue` for 💡, with its title as a bold first `<p>`; it holds only `<p>`, `<ul>`, and `<ol>`. Rewrite it in place with `block_replace` |
 | Read, write, or fill a section of a page | Edit the entry's doc: `docs +fetch --detail full` to read it with its styles and block IDs, `docs +update` to change blocks |
+| Write a part when you fill it, at its place in the template | `docs +update --command block_insert_after --block-id <the last block of the part before it>`, or `append` when it comes last |
+| Put several points in one table cell, a `\n` between them | One `<p>` per point inside the `<td>` |
 | @mention a page | In a doc, a doc mention (`<cite type="doc">` in the CLI's XML). Between records, the link fields above |
 | Read the review colors of every text, table cells included | `docs +fetch --detail full` gives each text's color and background as RGB values, in the table below. Record fields carry no color, so the user reviews a field's value in the doc, or in a comment on it |
 | Write rewritten text without its mark | `docs +update --command block_replace` on the block that holds it: `str_replace` keeps the color of the text it replaces |
-| Add a figure | An image in the doc, right above its caption: `<img path="<file>.png"/>` in a `docs +update`, with the path relative to the working directory |
+| Add a figure | An image in the doc, right above its caption: `<img path="<file>.png"/>` in a `docs +update`, with the path relative to the working directory. To replace a figure, such as the curves at each report, `block_replace` its image block |
 | Set `"time_zone"` on a date property | Write the date-time with the offset of `TZ` |
 
 The user's marks, as `docs +fetch --detail full` prints them; other colors are not marks:
