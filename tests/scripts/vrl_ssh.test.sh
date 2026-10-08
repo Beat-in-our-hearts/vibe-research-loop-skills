@@ -3,7 +3,9 @@
 # Tests for vrl_ssh.sh, with the fake ssh, mount, and sshfs.
 . "$(dirname "$0")/lib.sh"
 export PATH="$FAKES:$PATH" FAKE_SSH_STATE="$TMP_ROOT/state" FAKE_HOME="$TMP_ROOT/home" TMPDIR="$TMP_ROOT/tmp"
-mkdir -p "$FAKE_SSH_STATE" "$FAKE_HOME" "$TMPDIR" "$TMP_ROOT/here"
+export HOME="$TMP_ROOT/user"
+mkdir -p "$FAKE_SSH_STATE" "$FAKE_HOME" "$TMPDIR" "$TMP_ROOT/here/docs/AGENTS" "$HOME/.ssh"
+printf 'Host myhpc\n    HostName example.org\nHost my.hpc other.host\n    HostName example.net\n' >"$HOME/.ssh/config"
 WS="$TMP_ROOT/remote ws/it's"
 mkdir -p "$WS"
 printf 'TZ=Asia/Dubai\nGREETING=hello\n' >"$WS/.env"
@@ -41,8 +43,27 @@ test_connect_auth_down_hostkey() {
 
 test_socket_folder_is_private() {
 	up
-	d="/tmp/vrl-ssh-$(id -u)"
-	[ -d "$d" ] && [ ! -L "$d" ] && [ "$(ls -ld "$d" | cut -c1-10)" = "drwx------" ] || { ls -ld "$d"; return 1; }
+	found=0
+	for d in "$HOME/.cache/vrl-ssh" "/tmp/vrl-ssh-$(id -u)"; do
+		[ -e "$d" ] || continue
+		found=1
+		expect [ ! -L "$d" ] && expect [ "$(ls -ld "$d" | cut -c1-10)" = "drwx------" ]
+	done
+	expect [ "$found" = 1 ]
+}
+
+test_alias_must_be_a_host_entry() {
+	run bash "$V" check evil.example.org; expect_rc 2 && expect_out "not a Host entry"
+	run bash "$V" check other.host; [ "$RC" != 2 ] || { echo "a second name on a Host line should pass: $OUT"; FAILED=1; }
+}
+
+test_signal_during_master_check_prints_marker() {
+	up
+	FAKE_SSH_HANG=1 bash "$V" check myhpc --limit 30 >"$TMP_ROOT/sig2.out" 2>&1 &
+	pid=$!
+	sleep 1
+	kill -TERM "$pid"; wait "$pid"
+	expect grep -qx '__EXIT 143' "$TMP_ROOT/sig2.out"
 }
 
 test_run_quoting_input_and_env() {
@@ -99,28 +120,34 @@ test_script_only_from_the_scripts_folder() {
 	up
 	printf 'secret-line\n' >"$TMP_ROOT/creds"
 	run bash "$V" script myhpc -- "$TMP_ROOT/creds"; expect_rc 2 && expect_no_out "secret-line"
+	mkdir -p "$TMP_ROOT/fake-scripts"; printf 'echo shipped\n' >"$TMP_ROOT/fake-scripts/resources.sh"; ln -s "$V" "$TMP_ROOT/fake-scripts/vrl_ssh.sh"
+	run bash "$TMP_ROOT/fake-scripts/vrl_ssh.sh" script myhpc --workspace "$WS" -- resources.sh --help; expect_no_out "shipped"
 	run bash "$V" script myhpc --workspace "$WS" -- gpu_hours.py --help; expect_rc 0 && expect_out "single-GPU hours"
 	run bash "$V" script myhpc --workspace "$WS" -- resources.sh --help; expect_rc 0 && expect_out "Usage: resources.sh"
 }
 
 test_alias_must_match_rules() {
-	mkdir -p "$TMP_ROOT/here/docs/AGENTS"
-	printf '| Remote host | `ssh myhpc`: the Host entry |\n' >"$TMP_ROOT/here/docs/AGENTS/remote.md"
-	(cd "$TMP_ROOT/here" && bash "$V" check otherhost) >"$TMP_ROOT/alias.out" 2>&1
-	grep -q "names the alias myhpc" "$TMP_ROOT/alias.out" || { cat "$TMP_ROOT/alias.out"; return 1; }
+	mkdir -p "$TMP_ROOT/rules/docs/AGENTS"
+	cd "$TMP_ROOT/rules" || return 1
+	printf 'Use `ssh other.host` for nothing.\n| Remote host | `ssh myhpc`: the `Host myhpc` entry |\n' >docs/AGENTS/remote.md
+	run bash "$V" check other.host; expect_rc 2 && expect_out "names the alias myhpc"
+	printf '| Remote host | the host |\n' >docs/AGENTS/remote.md
+	run bash "$V" check myhpc; expect_rc 2 && expect_out "must name the remote host"
 }
 
 test_mount_rules() {
 	up
 	cd "$TMP_ROOT/here" || return 1
-	run bash "$V" mount myhpc --workspace "$WS" --mount "$HOME/.ssh"; expect_rc 2 && expect_out "right in the current folder"
+	run bash "$V" mount myhpc --workspace "$WS" --mount "$HOME/.ssh"; expect_rc 2 && expect_out "right in the launch directory"
+	(cd "$TMP_ROOT/state" && bash "$V" mount myhpc --workspace "$WS" --mount m) >"$TMP_ROOT/m.out" 2>&1
+	expect grep -q "the one that holds docs/AGENTS" "$TMP_ROOT/m.out"
 	run bash "$V" mount myhpc --workspace "$WS" --mount .claude; expect_rc 2 && expect_out "not hidden"
 	mkdir -p "mnt full" && touch "mnt full/file"
 	run bash "$V" mount myhpc --workspace "$WS" --mount "mnt full"; expect_rc 2 && expect_out "not empty"
 	mkdir -p "mnt one"
 	FAKE_MOUNT_STYLE=linux run bash "$V" mount myhpc --workspace "$WS" --mount "mnt one"; expect_rc 0 && expect_out "is mounted at"
 	FAKE_MOUNT_STYLE=linux run bash "$V" check myhpc --mount "mnt one"; expect_rc 0 && expect_out "is listed"
-	printf '/dev/disk9 on %s (apfs, local)\n' "$TMP_ROOT/here/mnt two" >>"$FAKE_SSH_STATE/mounts"
+	printf 'otherhost:/data on %s (macfuse, nodev)\n' "$TMP_ROOT/here/mnt two" >>"$FAKE_SSH_STATE/mounts"
 	mkdir -p "mnt two"
 	run bash "$V" mount myhpc --workspace "$WS" --mount "mnt two"; expect_rc 1 && expect_out "Something other than an SSHFS mount"
 }

@@ -59,7 +59,7 @@ main() {
 	umask 077
 
 	local log="" purpose="" session="" nohup=0 gpus="" no_gpu=0 machine="" code="" outputs="" envname=""
-	local restart=0 resume=0 new_session=0 wait_s=3 plan="" run="" plan_sha=""
+	local restart=0 resume=0 new_session=0 wait_s=3 plan="" plan_given=0 run="" plan_sha=""
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--log) log="${2:-}"; shift ;;
@@ -76,7 +76,7 @@ main() {
 			--resume) resume=1 ;;
 			--new-session) new_session=1 ;;
 			--wait) wait_s="${2:-}"; shift ;;
-			--plan) plan="${2:-}"; shift ;;
+			--plan) plan="${2:-}"; plan_given=$((plan_given + 1)); shift ;;
 			--run) run="${2:-}"; shift ;;
 			--plan-sha256) plan_sha="${2:-}"; shift ;;
 			-h | --help) usage; return 0 ;;
@@ -88,7 +88,8 @@ main() {
 
 	# Arguments.
 	local cmd=""
-	if [ -n "$plan" ]; then
+	if [ "$plan_given" -gt 0 ]; then
+		[ "$plan_given" = 1 ] && [ -n "$plan" ] || { err "Give --plan once, with the plan file"; return 2; }
 		[ $# -eq 0 ] || { err "The plan form takes no command after --: the command comes from the plan"; return 2; }
 		[ -n "$run" ] || { err "--plan needs --run"; return 2; }
 		[ -n "$plan_sha" ] || { err "--plan needs --plan-sha256, the hash recorded when the plan was approved"; return 2; }
@@ -196,8 +197,8 @@ main() {
 		last_pid="$(printf '%s' "$state" | cut -f3)"
 		case "$state" in
 			open*)
-				if [ -n "$last_pid" ] && run_alive "$last_pid" "$last_id"; then
-					err "PID $last_pid of run $last_id is still alive: the run is still going. Check it before starting it again."
+				if run_alive "$log_path" "$last_pid" "$last_id"; then
+					err "Run $last_id still writes this log: it is still going. Check it before starting it again."
 					return 3
 				fi
 				[ "$restart" = 1 ] || {
@@ -207,8 +208,8 @@ main() {
 				close_dead_run "$log_path" "$last_id"
 				;;
 			finished0*)
-				if [ "$resume" = 0 ] && [ -n "$outputs" ] && [ -n "$(ls -A "$outputs" 2>/dev/null)" ]; then
-					err "The log's last run finished with exit code 0 and its outputs exist: give a rerun a new run name, or pass --resume to continue it."
+				if [ "$resume" = 0 ]; then
+					err "The log's last run finished with exit code 0: give a rerun a new run name, or pass --resume to continue it."
 					return 3
 				fi
 				;;
@@ -255,57 +256,67 @@ main() {
 		venv_lines="export VIRTUAL_ENV=$(sq "$VIRTUAL_ENV") PATH=$(sq "$VIRTUAL_ENV/bin"):\"\$PATH\""
 	fi
 
-	# The shell that runs the command writes the header, with its own PID, and the footer. The command
-	# runs in a process group of its own, so that a signal to this shell, such as closing the tmux
-	# window or `kill <PID>`, reaches every process of the run; the footer waits until all have ended.
-	local inner
-	inner="umask 077
+	# The shell that runs the command writes the header, with its own PID, and the footer. It runs from a
+	# file, so that no shell of the user's quotes it. The command runs in a session of its own, with no
+	# terminal, so that a signal to this shell, such as closing the tmux window or `kill <PID>`, reaches
+	# every process of the run: TERM first, KILL 10 seconds later. The footer waits until all have ended.
+	local runner start_child
+	runner="$(mktemp "${TMPDIR:-/tmp}/vrl-run-$run_id.XXXXXX")" || { err "Could not write the run's script"; return 1; }
+	if command -v perl >/dev/null 2>&1; then
+		start_child="perl -MPOSIX -e 'POSIX::setsid(); \$SIG{INT} = \$SIG{HUP} = \"DEFAULT\"; exec @ARGV or exit 127' bash -c $(sq "$cmd") $(sq "vrl-run-$run_id") >>$(sq "$log_path") 2>&1 </dev/null &"
+	else
+		start_child="set -m; bash -c $(sq "$cmd") $(sq "vrl-run-$run_id") >>$(sq "$log_path") 2>&1 </dev/null & set +m"
+	fi
+	cat >"$runner" <<RUNNER
+rm -f -- $(sq "$runner")
+umask 077
 cd $(sq "$ws") || exit 97
 exec 2>>$(sq "$log_path")
 set -a; . ./.env; set +a
 export CUDA_VISIBLE_DEVICES=$(sq "$gpus") CUDA_DEVICE_ORDER=PCI_BUS_ID PYTHONUNBUFFERED=1
 $venv_lines
 unset ANTHROPIC_API_KEY OPENAI_API_KEY GH_TOKEN GITHUB_TOKEN NOTION_TOKEN NOTION_API_KEY
-ts() { local z; z=\$(date +%z); printf '%s %s:%s' \"\$(date '+%Y-%m-%d %H:%M:%S')\" \"\${z%??}\" \"\${z#???}\"; }
+ts() { local z; z=\$(date +%z); printf '%s %s:%s' "\$(date '+%Y-%m-%d %H:%M:%S')" "\${z%??}" "\${z#???}"; }
 stop=0 child=
-trap 'stop=1; [ -n \"\$child\" ] && kill -TERM -- -\"\$child\" 2>/dev/null' HUP INT TERM
+trap 'stop=1; [ -n "\$child" ] && kill -TERM -- -"\$child" 2>/dev/null' HUP INT TERM
 start=\$(date +%s)
-{ printf '%s\\n' $(sq "$header"); printf '# session:   %sPID %s\\n' $(sq "$where") \"\$\$\"; printf '# started:   %s\\n' \"\$(ts)\"; printf '# ---------- stdout + stderr ----------\\n'; } >>$(sq "$log_path")
-set -m
-bash -c $(sq "$cmd") >>$(sq "$log_path") 2>&1 </dev/null &
+{ printf '%s\n' $(sq "$header"); printf '# session:   %sPID %s\n' $(sq "$where") "\$\$"; printf '# started:   %s\n' "\$(ts)"; printf '# ---------- stdout + stderr ----------\n'; } >>$(sq "$log_path")
+$start_child
 child=\$!
-set +m
-[ \"\$stop\" = 0 ] || kill -TERM -- -\"\$child\" 2>/dev/null
-wait \"\$child\"; rc=\$?
-while kill -0 \"\$child\" 2>/dev/null; do wait \"\$child\"; rc=\$?; done
+[ "\$stop" = 0 ] || kill -TERM -- -"\$child" 2>/dev/null
 n=0
-while kill -0 -- -\"\$child\" 2>/dev/null; do
-  [ \$n = 0 ] && kill -TERM -- -\"\$child\" 2>/dev/null
-  [ \$n = 10 ] && kill -KILL -- -\"\$child\" 2>/dev/null
+while :; do
+  wait "\$child"; rc=\$?
+  kill -0 "\$child" 2>/dev/null || break
+  # A signal ended the wait while the command still runs: give it 10 seconds, then KILL its group.
+  while kill -0 "\$child" 2>/dev/null; do
+    sleep 1; n=\$((n + 1))
+    [ \$n -lt 10 ] || kill -KILL -- -"\$child" 2>/dev/null
+  done
+done
+n=0
+while kill -0 -- -"\$child" 2>/dev/null; do
+  [ \$n = 0 ] && kill -TERM -- -"\$child" 2>/dev/null
+  [ \$n = 10 ] && kill -KILL -- -"\$child" 2>/dev/null
   [ \$n -ge 15 ] && break
   sleep 1; n=\$((n + 1))
 done
-[ -n \"\$(tail -c 1 $(sq "$log_path"))\" ] && printf '\\n' >>$(sq "$log_path")
+[ -n "\$(tail -c 1 $(sq "$log_path"))" ] && printf '\n' >>$(sq "$log_path")
 d=\$((\$(date +%s) - start))
-{ printf '# ---------- end %s ----------\\n' $(sq "$run_id"); printf '# finished:  %s (%d:%02d:%02d), exit code %d\\n' \"\$(ts)\" \$((d / 3600)) \$((d % 3600 / 60)) \$((d % 60)) \"\$rc\"; } >>$(sq "$log_path")"
+{ printf '# ---------- end %s ----------\n' $(sq "$run_id"); printf '# finished:  %s (%d:%02d:%02d), exit code %d\n' "\$(ts)" \$((d / 3600)) \$((d % 3600 / 60)) \$((d % 60)) "\$rc"; } >>$(sq "$log_path")
+RUNNER
 
 	if [ -n "$session" ]; then
-		if tmux_major_at_least 3; then
-			# Given as separate words, tmux runs the command itself, not through the user's default shell.
-			tmux new-window -d -t "$session:" -n "$window" -c "$ws" bash -c "$inner" ||
-				{ err "tmux could not open the window"; return 1; }
-		else
-			tmux new-window -d -t "$session:" -n "$window" -c "$ws" "exec bash -c $(sq "$inner")" ||
-				{ err "tmux could not open the window"; return 1; }
-		fi
+		tmux new-window -d -t "$session:" -n "$window" -c "$ws" "bash $(sq "$runner")" ||
+			{ rm -f "$runner"; err "tmux could not open the window"; return 1; }
 	elif command -v perl >/dev/null 2>&1; then
 		# A session of its own, with SIGINT and SIGHUP back to their defaults, which `&` would ignore.
 		perl -MPOSIX -e 'POSIX::setsid(); $SIG{INT} = $SIG{HUP} = "DEFAULT"; exec @ARGV or exit 127' \
-			bash -c "$inner" >/dev/null 2>&1 </dev/null &
+			bash "$runner" >/dev/null 2>&1 </dev/null &
 	elif command -v setsid >/dev/null 2>&1; then
-		setsid bash -c "$inner" >/dev/null 2>&1 </dev/null &
+		setsid bash "$runner" >/dev/null 2>&1 </dev/null &
 	else
-		nohup bash -c "$inner" >/dev/null 2>&1 </dev/null &
+		nohup bash "$runner" >/dev/null 2>&1 </dev/null &
 	fi
 
 	# Wait for the header, then up to --wait seconds for the end.
@@ -343,7 +354,7 @@ d=\$((\$(date +%s) - start))
 NL='
 '
 CR="$(printf '\r')"
-SECRET_RE='(hf_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[bpas]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|(token|secret|password|passwd|api_?key)[A-Za-z_]*=[^[:space:]]+)'
+SECRET_RE='(hf_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[bpas]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|(^|[^A-Za-z0-9_])((hf|wandb|openai|anthropic|gh|github|api|auth|access|secret|private)_?(token|key|secret)|password|passwd)=[^$[:space:]])'
 
 err() { printf 'launch_run: %s\n' "$*" >&2; }
 
@@ -360,11 +371,6 @@ git_safe() {
 	git -C "$dir" -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.quotepath=off -c color.ui=false "$@"
 }
 
-tmux_major_at_least() {
-	local v
-	v="$(tmux -V 2>/dev/null | sed -n 's/^tmux \([0-9][0-9]*\).*/\1/p')"
-	[ -n "$v" ] && [ "$v" -ge "$1" ]
-}
 
 sha256_of() {
 	if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
@@ -374,12 +380,13 @@ sha256_of() {
 
 # The command of one run in an approved plan file, after checking where the file is and its hash.
 plan_command() {
-	local ws="$1" plan="$2" run="$3" want="$4" real got blocks rc
+	local ws="$1" plan="$2" run="$3" want="$4" real plans got blocks rc
 	case "$run" in "" | *[!A-Za-z0-9_.-]*) err "A run name holds only letters, digits, ., - and _"; return 1 ;; esac
 	[ -f "$plan" ] && [ ! -L "$plan" ] || { err "No such plan file, or it is a symlink: $plan"; return 1; }
 	real="$(cd "$(dirname "$plan")" && pwd -P)/$(basename "$plan")"
+	plans="$(cd "$ws/docs/plans" 2>/dev/null && pwd -P)" || { err "This workspace has no docs/plans/"; return 1; }
 	case "$real" in
-		"$ws/docs/plans/"*) ;;
+		"$plans/"*) ;;
 		*) err "The plan file must be under docs/plans/ of this workspace: $plan"; return 1 ;;
 	esac
 	got="$(sha256_of "$real")"
@@ -387,19 +394,35 @@ plan_command() {
 		err "The plan file changed since it was approved: its SHA-256 is $got, not $want. A changed plan needs a new approval."
 		return 1
 	fi
-	blocks="$(awk -v run="$run" '
-		/^[ \t]*```/ {
-			if (inside) { inside = 0; next }
-			info = $0; sub(/^[ \t]*```/, "", info)
-			if (index(" " info " ", " run=" run " ")) { inside = 1; found++; next }
+	# A block opens with a fence of three or more backticks or tildes whose info string holds the word
+	# run=<run>, and closes only at a line that is a fence of the same character, at least as long.
+	blocks="$(tr -d '\r' <"$real" | awk -v run="$run" '
+		function fence(line,   m) {
+			if (match(line, /^ ? ? ?(````*|~~~~*)/)) { m = substr(line, RSTART, RLENGTH); sub(/^ */, "", m); return m }
+			return ""
 		}
-		inside { print }
-		END { if (found != 1) exit (found == 0 ? 3 : 4) }
-	' "$real")"
+		{
+			f = fence($0)
+			if (inside) {
+				if (f != "" && substr(f, 1, 1) == ch && length(f) >= len && $0 ~ /^ ? ? ?[`~][`~]*[ \t]*$/) { inside = 0; next }
+				print
+				next
+			}
+			if (f != "") {
+				info = $0; sub(/^ ? ? ?[`~][`~]*/, "", info)
+				n = split(info, words, /[ \t]+/)
+				hit = 0
+				for (i = 1; i <= n; i++) if (words[i] == "run=" run) hit = 1
+				if (hit) { inside = 1; found++; ch = substr(f, 1, 1); len = length(f); next }
+			}
+		}
+		END { if (inside) exit 5; if (found != 1) exit (found == 0 ? 3 : 4) }
+	')"
 	rc=$?
 	case $rc in
 		0) ;;
 		3) err "The plan has no block for run $run: a fenced block whose info string holds run=$run"; return 1 ;;
+		5) err "The plan's block for run $run never closes"; return 1 ;;
 		*) err "The plan has more than one block for run $run"; return 1 ;;
 	esac
 	[ -n "$blocks" ] || { err "The plan's block for run $run is empty"; return 1; }
@@ -409,9 +432,10 @@ plan_command() {
 # The state of a log's last run: "open<TAB>id<TAB>pid", "finished<code><TAB>id", or "none".
 log_state() {
 	awk -v OFS='\t' '
+		open && oid != "" { if ($0 == "# ---------- end " oid " ----------") { open = 0; closing = 1 }; next }
 		/^# run-id:/ { id = $3 } /^# session:/ { s = $0 }
-		/^# ---------- stdout/ { open = 1; oid = id; os = s; id = ""; fin = "" }
-		/^# ---------- end/ && open && (oid == "" || index($0, oid)) { open = 0; closing = 1; next }
+		/^# ---------- stdout/ { open = 1; oid = id; os = s; id = ""; fin = ""; next }
+		/^# ---------- end/ && open { open = 0; closing = 1; next }
 		closing && /^# finished:/ { fin = $0; closing = 0 }
 		END {
 			if (open) { pid = ""; if (match(os, /PID [0-9]+/)) pid = substr(os, RSTART + 4, RLENGTH - 4); print "open", oid, pid }
@@ -420,15 +444,33 @@ log_state() {
 		}' "$1"
 }
 
-# True when the PID is alive and its command line holds the run-id, so it is still that run's shell.
+# The PIDs of this user's processes that have a file open for writing; every process of a run holds
+# its log so, the command's children included, even after its shell is gone. Returns 2 when no way to
+# tell exists here, neither /proc nor lsof.
+writers_of() {
+	local f="$1" real
+	real="$(cd "$(dirname "$f")" 2>/dev/null && pwd -P)/$(basename "$f")"
+	if [ "$(uname -s)" = Linux ] && [ -d /proc/self/fd ]; then
+		ls -l /proc/[0-9]*/fd 2>/dev/null | awk -v f="$real" '$1 ~ /^l.w/ { i = index($0, " -> "); if (i && substr($0, i + 4) == f) n++ } END { exit !n }'
+		return
+	fi
+	command -v lsof >/dev/null 2>&1 || return 2
+	lsof -w -Fan -- "$real" 2>/dev/null | awk '/^a/ && /[wu]/ { n++ } END { exit !n }'
+}
+
+# True when the run still writes its log, or, where that cannot be told, when the PID of its shell is
+# alive and its command line still holds the run-id.
 run_alive() {
-	local pid="$1" id="$2"
-	kill -0 "$pid" 2>/dev/null || return 1
+	local log="$1" pid="$2" id="$3" rc
+	writers_of "$log"
+	rc=$?
+	[ "$rc" = 2 ] || return "$rc"
+	[ -n "$pid" ] && kill -0 "$pid" 2>/dev/null || return 1
 	[ -n "$id" ] || return 0
 	ps -o command= -p "$pid" 2>/dev/null | grep -Fq -- "$id"
 }
 
-epoch_of() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"; }
+epoch_of() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1"; }
 format_epoch() {
 	local z out
 	out="$(date -r "$1" '+%Y-%m-%d %H:%M:%S %z' 2>/dev/null || date -d "@$1" '+%Y-%m-%d %H:%M:%S %z')"
@@ -447,10 +489,23 @@ close_dead_run() {
 	} >>"$log"
 }
 
+# limited <seconds> <command...>: run it, ending its process group at the limit; 124 when cut.
+limited() {
+	local limit="$1"
+	shift
+	if command -v timeout >/dev/null 2>&1; then timeout -k 5 "$limit" "$@"
+	elif command -v gtimeout >/dev/null 2>&1; then gtimeout -k 5 "$limit" "$@"
+	elif command -v perl >/dev/null 2>&1; then
+		perl -e '$SIG{ALRM} = sub { kill "TERM", -$pid; sleep 2; kill "KILL", -$pid; exit 124 };
+			$pid = fork; if (!$pid) { setpgrp(0, 0); exec @ARGV[1..$#ARGV] or exit 127 }
+			alarm $ARGV[0]; waitpid $pid, 0; exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$limit" "$@"
+	else "$@"; fi
+}
+
 # The models of the given GPUs, such as `NVIDIA A100-SXM4-80GB`, or `unknown` without nvidia-smi.
 gpu_model() {
 	local models
-	models="$(nvidia-smi --query-gpu=index,name --format=csv,noheader 2>/dev/null |
+	models="$(limited 15 nvidia-smi --query-gpu=index,name --format=csv,noheader 2>/dev/null |
 		awk -F', *' -v ids=",$1," 'index(ids, "," $1 ",") { print $2 }' | sort -u |
 		awk '{ printf "%s%s", (NR > 1 ? " + " : ""), $0 }')"
 	printf '%s' "${models:-unknown}"
@@ -466,7 +521,7 @@ save_diff() {
 		git_safe "$code" diff --no-ext-diff --no-textconv --binary --src-prefix=a/ --dst-prefix=b/ HEAD
 		git_safe "$code" ls-files -o --exclude-standard -z | while IFS= read -r -d '' f; do
 			(cd "$code" && git -c core.fsmonitor= -c core.hooksPath=/dev/null -c color.ui=false \
-				diff --no-index --no-ext-diff --no-textconv --binary --src-prefix=a/ --dst-prefix=b/ /dev/null "$f")
+				diff --no-index --no-ext-diff --no-textconv --binary --src-prefix=a/ --dst-prefix=b/ -- /dev/null "$f")
 		done
 	} >"$tmp"
 	if grep -Eiq "$SECRET_RE" "$tmp"; then

@@ -61,16 +61,20 @@ class GpuHours(unittest.TestCase):
         self.assertAlmostEqual(self.count()["single_gpu_hours"], 4.0)
 
     def test_running_process_counts_to_now(self):
-        proc = subprocess.Popen(["bash", "-c", "sleep 30; true", "abc123def456"])
+        start = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 3600)) + " " + \
+            time.strftime("%z")[:3] + ":" + time.strftime("%z")[3:]
+        path = self.write("a.log", header(start=start, session="PID 999999"))
+        # A run's processes hold its log open for writing; that, not the PID, says it runs.
+        log = open(path, "a")
+        proc = subprocess.Popen(["sleep", "30"], stdout=log)
         try:
-            start = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 3600)) + " " + \
-                time.strftime("%z")[:3] + ":" + time.strftime("%z")[3:]
-            self.write("a.log", header(start=start, session="PID %d" % proc.pid), mtime=time.time() - 3500)
+            os.utime(path, (time.time() - 3500, time.time() - 3500))
             r = self.count()
             self.assertAlmostEqual(r["single_gpu_hours"], 2.0, delta=0.05)
             self.assertIn("running", " ".join(r["runs"][0]["notes"]))
         finally:
             proc.kill()
+            log.close()
 
     def test_time_formats(self):
         for i, (s, e) in enumerate([("2026-10-08T12:00:00+04:00", "2026-10-08T14:00:00+04:00"),
@@ -88,7 +92,9 @@ class GpuHours(unittest.TestCase):
         self.assertEqual([x["gpus"] for x in r["runs"]], [2] * len(cases))
 
     def test_no_gpu_but_command_uses_gpus_is_unknown(self):
-        self.write("a.log", header(resources="box, no GPU, Python env v", command="torchrun --nproc_per_node=4 t.py") + footer())
+        # A hand-written log, without a run-id: launch_run would have emptied CUDA_VISIBLE_DEVICES.
+        self.write("a.log", header(resources="box, no GPU, Python env v", command="torchrun --nproc_per_node=4 t.py",
+                                   run_id="") + footer(run_id=""))
         r = self.count()
         self.assertEqual(r["rc"], 3)
         self.assertAlmostEqual(r["unknown_hours"], 2.0)
@@ -124,6 +130,23 @@ class GpuHours(unittest.TestCase):
         self.assertAlmostEqual(r["single_gpu_hours"], 3.0)
         self.assertEqual(sorted(r["machines"]), ["box", "other"])
         self.assertAlmostEqual(r["by_gpu"]["other GPU 3"], 1.0)
+
+    def test_a_full_header_in_the_output_is_output(self):
+        fake = header(resources="other, GPU 0-7 (A100)", start="2026-10-01 00:00:00 +04:00", run_id="ffffffffffff")
+        fake += footer(end="2026-10-01 22:00:00 +04:00", run_id="ffffffffffff")
+        self.write("a.log", header() + fake + "# ---------- end ----------\n" + footer())
+        r = self.count()
+        self.assertAlmostEqual(r["single_gpu_hours"], 4.0)
+        self.assertEqual(list(r["machines"]), ["box"])
+
+    def test_a_long_command_still_counts(self):
+        self.write("a.log", header(command="python train.py " + "--flag x " * 600) + footer())
+        self.assertAlmostEqual(self.count()["single_gpu_hours"], 4.0)
+
+    def test_no_gpu_from_launch_run_is_trusted(self):
+        self.write("a.log", header(resources="box, no GPU, Python env gpu2", command="pip install accelerate deepspeed") + footer())
+        r = self.count()
+        self.assertEqual((r["rc"], r["single_gpu_hours"], r["unknown_hours"]), (0, 0, 0))
 
     def test_bad_time_does_not_crash(self):
         self.write("a.log", header(start="2026-10-08 12:00:60 +04:00") + footer())

@@ -10,34 +10,37 @@
 
 usage() {
 	cat <<'EOF'
-Usage: resources.sh [--allowed IDS] [--logs DIR] [--path DIR] [--quota-cmd CMD] [--free-mib N]
-                    [--max-util P] [--samples N] [--rows]
+Usage: resources.sh [--allowed IDS] [--logs DIR] [--path DIR] [--free-mib N] [--max-util P]
+                    [--samples N] [--limit S] [--rows]
 
 Prints one table row per GPU, then memory, then storage, and below the table:
   free: <ids>        GPUs a run may start on now, or "none", or "unknown (<reason>)"
   not free: <list>   each other allowed GPU with the reason, such as a run, a process, or MIG
   claimed: <list>    GPUs that a running log claims, with the run
+  note: <text>       anything that limits what the lines above can tell
 
 A GPU is free only when all of these hold, in every sample:
-  - nvidia-smi answers within 60 s and lists its processes without an error;
+  - nvidia-smi answers in time and lists its processes without an error;
   - no process runs on it, its memory use is below --free-mib, and its utilization is at most
     --max-util;
   - MIG is off on it;
-  - no log under --logs claims it: a run whose header names the GPU, whose run has no footer, and
-    whose process is still alive;
+  - no running log claims it: a log under --logs that has no footer yet, that one of your processes
+    still writes, and whose header names the GPU;
   - it is among --allowed, when given.
-Whether a scheduler job holds it is not checked: on a machine with Slurm, free is "unknown".
+Free is "unknown" whenever one of these cannot be told, on a machine with a Slurm scheduler, and when
+nvidia-smi lists a GPU it cannot read, since the GPU numbers may then have moved.
 
-  --allowed IDS    The GPU ids experiments may use, from docs/AGENTS/machine.md, such as 0,1,2,3.
-  --logs DIR       The logs folder (default: logs, if it exists).
-  --path DIR       A folder on the filesystem that holds the outputs (default: runs, if it exists,
-                   else .).
-  --quota-cmd CMD  The command docs/AGENTS/machine.md gives for the storage quota; its output is
-                   printed below the table, since df gives the filesystem, not the quota.
-  --free-mib N     Memory below which a GPU without processes may count as free (default 1024).
-  --max-util P     Utilization in percent up to which it may count as free (default 5).
-  --samples N      Samples of each GPU, 2 seconds apart (default 2).
-  --rows           Print the rows only, without the table header, to put them under task rows.
+  --allowed IDS   The GPU ids experiments may use, from docs/AGENTS/machine.md, such as 0,1 or 0-3.
+  --logs DIR      The logs folder (default: logs, if it exists).
+  --path DIR      A folder on the filesystem that holds the outputs (default: runs, if it exists,
+                  else .). Its row is the filesystem from df, not the quota: run the quota command
+                  of docs/AGENTS/machine.md for that.
+  --free-mib N    Memory below which a GPU without processes may count as free (default 256).
+  --max-util P    Utilization in percent up to which it may count as free (default 5).
+  --samples N     Samples of each GPU, 2 seconds apart (default 2).
+  --limit S       The time limit of the whole script, in seconds (default 45); each nvidia-smi call
+                  gets at most 15 of them.
+  --rows          Print the rows only, without the table header, to put them under task rows.
 
 Processes of other users are shown by user name only, never by command line.
 Exit codes: 0 done; 2 bad arguments.
@@ -46,78 +49,85 @@ EOF
 
 main() {
 	set -uo pipefail
-	local allowed="" logs="" path="" quota_cmd="" free_mib=1024 max_util=5 samples=2 rows_only=0
+	local allowed="" logs="" path="" free_mib=256 max_util=5 samples=2 limit=45 rows_only=0
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--allowed) allowed="${2:-}"; shift ;;
-			--allowed=*) allowed="${1#*=}" ;;
 			--logs) logs="${2:-}"; shift ;;
-			--logs=*) logs="${1#*=}" ;;
 			--path) path="${2:-}"; shift ;;
-			--path=*) path="${1#*=}" ;;
-			--quota-cmd) quota_cmd="${2:-}"; shift ;;
-			--quota-cmd=*) quota_cmd="${1#*=}" ;;
 			--free-mib) free_mib="${2:-}"; shift ;;
-			--free-mib=*) free_mib="${1#*=}" ;;
 			--max-util) max_util="${2:-}"; shift ;;
-			--max-util=*) max_util="${1#*=}" ;;
 			--samples) samples="${2:-}"; shift ;;
-			--samples=*) samples="${1#*=}" ;;
+			--limit) limit="${2:-}"; shift ;;
 			--rows) rows_only=1 ;;
 			-h | --help) usage; return 0 ;;
 			*) err "Unknown argument: $1"; return 2 ;;
 		esac
 		shift
 	done
-	is_uint "$free_mib" && is_uint "$max_util" && is_uint "$samples" && [ "$samples" -ge 1 ] ||
-		{ err "--free-mib, --max-util, and --samples take whole numbers, --samples at least 1"; return 2; }
+	is_uint "$free_mib" && is_uint "$max_util" && is_uint "$samples" && is_uint "$limit" &&
+		[ "$samples" -ge 1 ] && [ "$samples" -le 5 ] ||
+		{ err "--free-mib, --max-util, --samples (1 to 5), and --limit take whole numbers"; return 2; }
 	case "$allowed" in
-		*[!0-9,]* | ,* | *, | *,,*) err "--allowed takes GPU ids such as 0,1"; return 2 ;;
+		*[!0-9,-]* | ,* | *, | *,,*) err "--allowed takes GPU ids such as 0,1 or 0-3"; return 2 ;;
 	esac
 	if [ -z "$path" ]; then
 		if [ -d runs ]; then path=runs; else path=.; fi
 	fi
 	[ -d "$path" ] || { err "No such folder: $path"; return 2; }
-	if [ -z "$logs" ] && [ -d logs ]; then logs=logs; fi
-	# For tests: a folder that stands in for / when reading /proc and /sys, and a shorter time limit.
+	NOTE_LINES=""
+	if [ -z "$logs" ]; then
+		if [ -d logs ]; then logs=logs; else note "no logs folder here, so no running log can claim a GPU"; fi
+	elif [ ! -d "$logs" ]; then
+		note "no logs folder at $logs, so no running log can claim a GPU"
+		logs=""
+	fi
+	# For tests: a folder that stands in for / when reading /proc and /sys, and a shorter limit.
 	ROOT="${VRL_RESOURCES_ROOT:-}"
-	SMI_LIMIT="${VRL_SMI_LIMIT:-60}"
+	SMI_LIMIT="${VRL_SMI_LIMIT:-15}"
+	DEADLINE=$(($(date +%s) + 10#$limit))
 
 	[ "$rows_only" = 1 ] || printf '| Item | Status | Details |\n|---|---|---|\n'
 	gpu_rows "$allowed" "$logs" "$free_mib" "$max_util" "$samples"
 	memory_row
-	storage_row "$path" "$quota_cmd"
+	storage_row "$path"
 	printf '\n%s\n' "$FREE_LINE"
 	[ -z "$NOT_FREE_LINE" ] || printf '%s\n' "$NOT_FREE_LINE"
 	[ -z "$CLAIMED_LINE" ] || printf '%s\n' "$CLAIMED_LINE"
 	[ -z "$NOTE_LINES" ] || printf '%s' "$NOTE_LINES"
-	if [ -n "$quota_cmd" ]; then
-		printf '\nQuota, from `%s`:\n```\n' "$quota_cmd"
-		limited 60 bash -c "$quota_cmd" 2>&1 | head -n 20
-		printf '```\n'
-	fi
 	return 0
 }
 
 err() { printf 'resources: %s\n' "$*" >&2; }
 is_uint() { case "$1" in "" | *[!0-9]*) return 1 ;; esac; }
-is_num() { case "$1" in "" | *[!0-9.]* | *.*.*) return 1 ;; esac; }
+# A number such as 12 or 3.5: digits, with at most one dot between digits.
+is_num() { printf '%s' "$1" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; }
+# Whether number $1 is above number $2; false for anything that is not a number.
+num_gt() { is_num "$1" && is_num "$2" && awk -v a="$1" -v b="$2" 'BEGIN { exit !(a > b) }'; }
+num_lt() { is_num "$1" && is_num "$2" && awk -v a="$1" -v b="$2" 'BEGIN { exit !(a < b) }'; }
 cell() { printf '%s' "$1" | tr '\n' ' ' | sed 's/|/\\|/g'; }
 trim() { printf '%s' "$1" | sed 's/^ *//; s/ *$//'; }
 note() { NOTE_LINES="${NOTE_LINES}note: $*
 "; }
 
-# limited <seconds> <command...>: run it, ending it at the limit; 124 when the limit cut it.
+# The seconds a call may take: at most $1, and never past the deadline; 1 at the least.
+budget() {
+	local left=$((DEADLINE - $(date +%s)))
+	[ "$left" -ge 1 ] || left=1
+	[ "$left" -lt "$1" ] && echo "$left" || echo "$1"
+}
+
+# limited <seconds> <command...>: run it, ending its process group at the limit; 124 when cut.
 limited() {
 	local limit="$1"
 	shift
 	if command -v timeout >/dev/null 2>&1; then
-		timeout -k 5 "$limit" "$@"
+		timeout -k 2 "$limit" "$@"
 	elif command -v gtimeout >/dev/null 2>&1; then
-		gtimeout -k 5 "$limit" "$@"
+		gtimeout -k 2 "$limit" "$@"
 	elif command -v perl >/dev/null 2>&1; then
-		perl -e '$SIG{ALRM} = sub { kill "TERM", $pid; sleep 2; kill "KILL", $pid; exit 124 };
-			$pid = fork; if (!$pid) { exec @ARGV[1..$#ARGV] or exit 127 }
+		perl -e '$SIG{ALRM} = sub { kill "TERM", -$pid; sleep 2; kill "KILL", -$pid; exit 124 };
+			$pid = fork; if (!$pid) { setpgrp(0, 0); exec @ARGV[1..$#ARGV] or exit 127 }
 			alarm $ARGV[0]; waitpid $pid, 0; exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$limit" "$@"
 	else
 		"$@"
@@ -128,39 +138,75 @@ limited() {
 human() { awk -v b="$1" 'BEGIN { if (b >= 1024^4) printf "%.2f TiB", b / 1024^4; else printf "%.1f GiB", b / 1024^3 }'; }
 percent() { awk -v u="$1" -v t="$2" 'BEGIN { if (t > 0) printf "%.0f %%", u * 100 / t; else printf "unknown" }'; }
 
+# The ids in a list such as 0,1 or 0-3, at most 64 of them and each below 1024; nothing if it is odd.
 expand_ids() {
-	local part out=""
-	for part in $(printf '%s' "$1" | tr ',' ' '); do
-		case "$part" in
-			*-*) out="$out $(seq "${part%-*}" "${part#*-}" 2>/dev/null | tr '\n' ' ')" ;;
-			*) out="$out $part" ;;
-		esac
-	done
-	printf '%s' "$out"
+	printf '%s' "$1" | tr -d ' ' | awk -F, '{
+		for (i = 1; i <= NF; i++) {
+			if ($i ~ /^[0-9]+$/) { lo = hi = $i + 0 }
+			else if ($i ~ /^[0-9]+-[0-9]+$/) { split($i, r, "-"); lo = r[1] + 0; hi = r[2] + 0 }
+			else exit 1
+			if (hi < lo || hi >= 1024 || hi - lo > 64) exit 1
+			for (g = lo; g <= hi; g++) { out = out " " g; if (++n > 64) exit 1 }
+		}
+		print out
+	}'
 }
 
 in_list() { case " $2 " in *" $1 "*) return 0 ;; esac; return 1; }
 
-# CLAIMS: "<id>=<run>" words for the GPUs that open logs with a live process claim.
+slurm_here() {
+	[ -n "${SLURM_JOB_ID:-}" ] || command -v sbatch >/dev/null 2>&1 || command -v squeue >/dev/null 2>&1 ||
+		[ -e /etc/slurm/slurm.conf ] || [ -e /etc/slurm-llnl/slurm.conf ]
+}
+
+# OPEN_FILES: on Linux, the files this user's processes hold open for writing, from one /proc scan.
+read_open_files() {
+	OPEN_FILES=""
+	if [ "$(uname -s)" = Linux ] && [ -d /proc/self/fd ]; then
+		OPEN_FILES="$(ls -l /proc/[0-9]*/fd 2>/dev/null | awk '$1 ~ /^l.w/ { i = index($0, " -> "); if (i) print substr($0, i + 4) }')"
+		OPEN_MODE=proc
+	elif command -v lsof >/dev/null 2>&1; then
+		OPEN_MODE=lsof
+	else
+		OPEN_MODE=none
+	fi
+}
+
+# Whether one of this user's processes writes the file: 0 yes, 1 no, 2 cannot tell.
+written() {
+	local real="$1"
+	case "$OPEN_MODE" in
+		proc) printf '%s\n' "$OPEN_FILES" | grep -Fxq -- "$real" ;;
+		lsof) limited "$(budget 10)" lsof -w -Fa -- "$real" 2>/dev/null | awk '/^a/ && /[wu]/ { n++ } END { exit !n }' ;;
+		*) return 2 ;;
+	esac
+}
+
+# CLAIMS: "<id>=<run>" words for the GPUs of every running log: a log with no footer at its end,
+# which one of this user's processes still writes. Only its last header's resources line counts.
 read_claims() {
-	local logs="$1" res pid file name ids id
-	CLAIMS=""
-	[ -n "$logs" ] && [ -d "$logs" ] || return 0
-	while IFS="$(printf '\t')" read -r res pid file; do
-		[ -n "$file" ] || continue
-		kill -0 "$pid" 2>/dev/null || continue
-		name="$(basename "$(dirname "$file")")/$(basename "$file" .log)"
-		ids="$(printf '%s' "$res" | sed -n 's/.*[Gg][Pp][Uu][Ss]\{0,1\}[ :=]*\([0-9][0-9,-]*\).*/\1/p')"
+	local logs="$1" f real ids id name rc
+	CLAIMS="" CLAIMS_UNKNOWN=""
+	[ -n "$logs" ] || return 0
+	read_open_files
+	while IFS= read -r f; do
+		[ -n "$f" ] || continue
+		tail -n 1 "$f" 2>/dev/null | grep -q '^# finished:' && continue
+		head -c 4096 "$f" 2>/dev/null | grep -q '^# command:' || continue
+		real="$(cd "$(dirname "$f")" 2>/dev/null && pwd -P)/$(basename "$f")"
+		written "$real"
+		rc=$?
+		if [ "$rc" = 2 ]; then
+			CLAIMS_UNKNOWN="no lsof or /proc here, so running logs cannot be told"
+			continue
+		fi
+		[ "$rc" = 0 ] || continue
+		ids="$(awk '/^# resources:/ { r = $0 } /^# ---------- stdout/ { last = r } END { print last }' "$f" |
+			sed -n 's/^# resources: [^,]*, [Gg][Pp][Uu][Ss]\{0,1\} \([0-9][0-9, -]*\).*/\1/p')"
+		name="$(basename "$(dirname "$f")")/$(basename "$f" .log)"
 		for id in $(expand_ids "$ids"); do CLAIMS="$CLAIMS $id=$name"; done
 	done <<EOF
-$(find "$logs" -type f -size -200000k 2>/dev/null | while read -r f; do
-		awk -v OFS="$(printf '\t')" '
-			/^# run-id:/ { id = $3 } /^# session:/ { s = $0 } /^# resources:/ { r = $0 }
-			/^# ---------- stdout/ { open = 1; oid = id; os = s; or_ = r; id = "" }
-			/^# ---------- end/ && open && (oid == "" || index($0, oid)) { open = 0 }
-			END { if (open && match(os, /PID [0-9]+/)) print or_, substr(os, RSTART + 4, RLENGTH - 4), FILENAME }
-		' "$f" 2>/dev/null
-	done)
+$(limited "$(budget 15)" find -L "$logs" -type f 2>/dev/null)
 EOF
 }
 
@@ -173,25 +219,23 @@ claim_of() {
 gpu_rows() {
 	local allowed="$1" logs="$2" free_mib="$3" max_util="$4" samples="$5"
 	local gpus apps mig n i index uuid util used total draw limit rest details procs who reason
-	local free="" not_free="" claimed="" busy_ids=""
-	FREE_LINE="free: none" NOT_FREE_LINE="" CLAIMED_LINE="" NOTE_LINES=""
-	if [ -n "${SLURM_JOB_ID:-}" ] || command -v sbatch >/dev/null 2>&1; then
-		note "this machine has a Slurm scheduler: launch through it as docs/AGENTS/machine.md says"
-	fi
+	local free="" not_free="" claimed="" busy="" lost=0 apps_failed=0 allowed_ids="" seen=""
+	FREE_LINE="free: none" NOT_FREE_LINE="" CLAIMED_LINE=""
 	if ! command -v nvidia-smi >/dev/null 2>&1; then
 		printf '| GPU | unknown | nvidia-smi not found |\n'
 		FREE_LINE="free: unknown (nvidia-smi not found)"
 		return
 	fi
+	if [ -n "$allowed" ]; then
+		allowed_ids="$(expand_ids "$allowed")" || { FREE_LINE="free: unknown (--allowed is not a list of GPU ids)"; return; }
+	fi
 	read_claims "$logs"
-	local allowed_ids=""
-	[ -z "$allowed" ] || allowed_ids="$(expand_ids "$allowed")"
 
-	# Each sample may veto a GPU; the last sample fills the rows.
+	# Each sample may mark a GPU busy, with its reason; the last sample fills the rows.
 	i=1
 	while [ "$i" -le "$samples" ]; do
 		[ "$i" = 1 ] || sleep 2
-		gpus="$(limited "$SMI_LIMIT" nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.used,memory.total,power.draw,power.limit \
+		gpus="$(limited "$(budget "$SMI_LIMIT")" nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.used,memory.total,power.draw,power.limit \
 			--format=csv,noheader,nounits 2>/dev/null)"
 		n=$?
 		if [ "$n" -ne 0 ] || [ -z "$gpus" ]; then
@@ -200,41 +244,34 @@ gpu_rows() {
 			FREE_LINE="free: unknown ($reason)"
 			return
 		fi
-		if ! apps="$(limited "$SMI_LIMIT" nvidia-smi --query-compute-apps=gpu_uuid,pid,used_memory --format=csv,noheader,nounits 2>/dev/null)"; then
-			FREE_LINE="free: unknown (nvidia-smi could not list the processes)"
-			APPS_FAILED=1
+		if ! apps="$(limited "$(budget "$SMI_LIMIT")" nvidia-smi --query-compute-apps=gpu_uuid,pid,used_memory --format=csv,noheader,nounits 2>/dev/null)"; then
+			apps_failed=1
 		fi
 		while IFS=, read -r index uuid util used total draw limit rest; do
 			index="$(trim "$index")" uuid="$(trim "$uuid")" util="$(trim "$util")" used="$(trim "$used")"
 			is_uint "$index" || continue
-			procs="$(gpu_processes "$uuid" "$apps")"
-			if [ -n "$procs" ]; then
-				in_list "$index" "$busy_ids" || busy_ids="$busy_ids $index"
-				eval "REASON_$index=\"a process\""
-			elif ! is_num "$util" || ! is_num "$used"; then
-				in_list "$index" "$busy_ids" || busy_ids="$busy_ids $index"
-				eval "REASON_$index=\"utilization or memory unknown\""
-			elif [ "${util%.*}" -gt "$max_util" ]; then
-				in_list "$index" "$busy_ids" || busy_ids="$busy_ids $index"
-				eval "REASON_$index=\"utilization $util %\""
-			elif [ "${used%.*}" -ge "$free_mib" ]; then
-				in_list "$index" "$busy_ids" || busy_ids="$busy_ids $index"
-				eval "REASON_$index=\"memory $used MiB in use\""
-			fi
+			[ -z "$(gpu_processes "$uuid" "$apps")" ] || { mark "$index" "a process"; continue; }
+			if ! is_num "$util" || ! is_num "$used"; then mark "$index" "utilization or memory unknown"; continue; fi
+			num_gt "$util" "$max_util" && { mark "$index" "utilization $util %"; continue; }
+			num_lt "$used" "$free_mib" || mark "$index" "memory $used MiB in use"
 		done <<EOF
 $gpus
 EOF
 		i=$((i + 1))
 	done
-	mig="$(limited "$SMI_LIMIT" nvidia-smi --query-gpu=index,mig.mode.current --format=csv,noheader 2>/dev/null)"
+	mig="$(limited "$(budget "$SMI_LIMIT")" nvidia-smi --query-gpu=index,mig.mode.current --format=csv,noheader 2>/dev/null)"
 
 	while IFS=, read -r index uuid util used total draw limit rest; do
 		index="$(trim "$index")" uuid="$(trim "$uuid")" util="$(trim "$util")" used="$(trim "$used")"
 		total="$(trim "$total")" draw="$(trim "$draw")" limit="$(trim "$limit")"
 		if ! is_uint "$index"; then
-			[ -z "$(trim "$index$uuid")" ] || printf '| GPU ? | unknown | %s |\n' "$(cell "$(trim "$index $uuid $util")")"
+			if [ -n "$(trim "$index$uuid")" ]; then
+				lost=1
+				printf '| GPU ? | unknown | %s |\n' "$(cell "$(trim "$index $uuid $util")")"
+			fi
 			continue
 		fi
+		seen="$seen $index"
 		if is_num "$used" && is_num "$total"; then
 			details="Memory $(awk -v u="$used" -v t="$total" 'BEGIN { printf "%.1f / %.1f GiB", u / 1024, t / 1024 }')"
 		else
@@ -249,8 +286,10 @@ EOF
 			details="$details; run $who"
 		elif [ -n "$procs" ]; then
 			details="$details; $procs"
+		elif [ "$apps_failed" = 1 ]; then
+			details="$details; processes unknown"
 		else
-			details="$details; idle"
+			details="$details; no process"
 		fi
 		is_num "$util" && util="$util %" || util="unknown"
 		printf '| GPU %s | %s | %s |\n' "$index" "$util" "$(cell "$details")"
@@ -263,9 +302,9 @@ EOF
 			reason="MIG is on"
 		elif [ -n "$who" ]; then
 			reason="claimed by $who"
-		elif in_list "$index" "$busy_ids"; then
+		elif in_list "$index" "$busy"; then
 			eval "reason=\"\${REASON_$index}\""
-		elif [ "${APPS_FAILED:-0}" = 1 ]; then
+		elif [ "$apps_failed" = 1 ]; then
 			reason="processes unknown"
 		fi
 		if [ -z "$reason" ]; then
@@ -276,21 +315,36 @@ EOF
 	done <<EOF
 $gpus
 EOF
-	if [ "${APPS_FAILED:-0}" = 1 ]; then
-		:
-	elif [ -n "${SLURM_JOB_ID:-}" ] || command -v sbatch >/dev/null 2>&1; then
-		[ -n "${SLURM_JOB_ID:-}" ] && FREE_LINE="free: ${free:-none}" || FREE_LINE="free: unknown (a Slurm scheduler assigns the GPUs)"
+	for i in $allowed_ids; do
+		in_list "$i" "$seen" || note "GPU $i is allowed, but nvidia-smi does not list it"
+	done
+	if [ "$apps_failed" = 1 ]; then
+		FREE_LINE="free: unknown (nvidia-smi could not list the processes)"
+	elif [ "$lost" = 1 ]; then
+		FREE_LINE="free: unknown (nvidia-smi lists a GPU it cannot read, so the GPU numbers may have moved)"
+	elif [ -n "$CLAIMS_UNKNOWN" ]; then
+		FREE_LINE="free: unknown ($CLAIMS_UNKNOWN)"
+	elif [ -n "${SLURM_JOB_ID:-}" ]; then
+		FREE_LINE="free: unknown (inside a Slurm job, which has its own GPUs)"
+	elif slurm_here; then
+		FREE_LINE="free: unknown (a Slurm scheduler assigns the GPUs)"
 	else
 		FREE_LINE="free: ${free:-none}"
 	fi
+	slurm_here && note "this machine has a Slurm scheduler: launch through it as docs/AGENTS/machine.md says"
 	[ -z "$not_free" ] || NOT_FREE_LINE="not free: $not_free"
 	[ -z "$claimed" ] || CLAIMED_LINE="claimed: $claimed"
 }
 
+# mark <index> <reason>: mark a GPU busy; the index is a plain number, checked by the caller.
+mark() {
+	in_list "$1" "$busy" || busy="$busy $1"
+	eval "REASON_$1=\$2"
+}
+
 # The processes on one GPU: this user's with their command, other users' by name only.
 gpu_processes() {
-	local uuid="$1" apps="$2" app_uuid pid mem rest user uid args out=""
-	local me
+	local uuid="$1" apps="$2" app_uuid pid mem rest user uid args out="" me
 	me="$(id -u)"
 	while IFS=, read -r app_uuid pid mem rest; do
 		[ -n "$(trim "$app_uuid")" ] && [ "$(trim "$app_uuid")" = "$uuid" ] || continue
@@ -388,16 +442,15 @@ linux_memory() {
 }
 
 storage_row() {
-	local path="$1" quota_cmd="$2" line used avail mounted label
+	local path="$1" line used avail mounted label="Storage (filesystem, not the quota)"
 	# df -P prints one line per filesystem; find the capacity field rather than counting columns,
 	# since a device or mount point may hold spaces.
-	line="$(df -Pk -- "$path" 2>/dev/null | awk 'NR > 1 {
+	line="$(limited "$(budget 10)" df -Pk -- "$path" 2>/dev/null | awk 'NR > 1 {
 		for (i = 2; i <= NF; i++) if ($i ~ /^[0-9]+%$/) {
 			m = $(i + 1); for (j = i + 2; j <= NF; j++) m = m " " $j
 			print $(i - 2), $(i - 1), m; exit
 		}
 	}')"
-	if [ -n "$quota_cmd" ]; then label="Storage (filesystem; the quota is below)"; else label="Storage (filesystem, not the quota)"; fi
 	read -r used avail mounted <<EOF
 $line
 EOF

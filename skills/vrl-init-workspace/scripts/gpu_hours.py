@@ -53,7 +53,7 @@ NO_GPU = re.compile(r"\bno\s+GPUs?\b", re.IGNORECASE)
 GPU_COMMAND = re.compile(r"CUDA_VISIBLE_DEVICES|torchrun|--nproc[_-]per[_-]node|\baccelerate\b|\bdeepspeed\b",
                          re.IGNORECASE)
 PID = re.compile(r"\bPID\s+(\d+)")
-SNIFF_BYTES = 4096
+SNIFF_BYTES = 65536
 NOTES = {}
 
 
@@ -126,6 +126,42 @@ def machine_of(resources):
     return name or "unknown machine"
 
 
+def writers(path):
+    """True when one of this user's processes has the file open for writing, False when none has, and
+    None when this machine gives no way to tell. Every process of a run holds its log open so."""
+    real = os.path.realpath(path)
+    if sys.platform.startswith("linux") and os.path.isdir("/proc/self/fd"):
+        for pid in os.listdir("/proc"):
+            if not pid.isdigit():
+                continue
+            fd_dir = "/proc/%s/fd" % pid
+            try:
+                fds = os.listdir(fd_dir)
+            except OSError:
+                continue
+            for fd in fds:
+                try:
+                    if os.readlink(os.path.join(fd_dir, fd)) != real:
+                        continue
+                    with open("/proc/%s/fdinfo/%s" % (pid, fd)) as f:
+                        flags = int(f.readline().split()[1], 8)
+                except (OSError, ValueError, IndexError):
+                    continue
+                if flags & 3:  # O_WRONLY or O_RDWR
+                    return True
+        return False
+    import shutil
+    import subprocess
+    if not shutil.which("lsof"):
+        return None
+    try:
+        out = subprocess.run(["lsof", "-w", "-Fa", "--", real], stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, universal_newlines=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return any(line.startswith("a") and ("w" in line or "u" in line) for line in out.splitlines())
+
+
 def pid_runs(pid, run_id, log_path):
     """True when the PID is alive and, as far as `ps` can tell, still the run's own shell."""
     try:
@@ -161,6 +197,10 @@ def read_log(path):
         if current is not None:
             e = END_MARK.search(line)
             want = current.get("run-id", "")
+            if want and not (e and e.group(1).lower() == want.lower()):
+                # The program's own output, whatever it prints, until the run's own end marker.
+                i += 1
+                continue
             if e and (not want or e.group(1).lower() == want.lower()):
                 for j in range(i + 1, min(i + 3, len(lines))):
                     k = KEY.match(lines[j])
@@ -227,7 +267,10 @@ def count_log(path, since, until, now):
                 notes.append("closed by a restart at the log's last write: an upper bound")
         else:
             pid = PID.search(r.get("session", ""))
-            if n == len(runs) - 1 and pid and pid_runs(int(pid.group(1)), r.get("run-id", ""), path):
+            alive = writers(path) if n == len(runs) - 1 else False
+            if alive is None:
+                alive = bool(pid) and pid_runs(int(pid.group(1)), r.get("run-id", ""), path)
+            if n == len(runs) - 1 and alive:
                 end = now
                 notes.append("running: counted up to now")
             elif n + 1 < len(runs) and parse_time(runs[n + 1].get("started"), default_tz):
@@ -237,6 +280,8 @@ def count_log(path, since, until, now):
                 end = last_write
                 notes.append("no footer and no live process: counted up to the log's last write")
         ids, count, gpu_note = read_gpus(r.get("resources"), r.get("command"))
+        if count is None and r.get("run-id") and NO_GPU.search(r.get("resources") or ""):
+            ids, count, gpu_note = [], 0, None
         if count is None and previous_gpus is not None:
             ids, count = previous_gpus
             gpu_note = "GPUs taken from the previous start in this log"
@@ -274,7 +319,7 @@ def has_header(path):
             head = f.read(SNIFF_BYTES)
     except OSError:
         return False
-    return b"started" in head and (b"stdout" in head or b"command" in head)
+    return b"# command:" in head or b"# started:" in head
 
 
 def find_logs(target, problems):
