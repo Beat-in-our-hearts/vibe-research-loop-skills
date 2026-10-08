@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
-# Install and log in to the CLIs of vibe-research-loop: uv, ntn (Notion), gh (GitHub), and hf (Hugging Face).
+# Install and log in to the CLIs of vibe-research-loop: uv, ntn (Notion), lark-cli (Feishu), gh (GitHub), and
+# hf (Hugging Face).
 # Everything goes into the user's home directory; nothing needs sudo.
 #
-# Usage: setup_clis.sh [check|install|login|all] [--upgrade] [--only uv,ntn,gh,hf] [--workspace DIR]
+# Usage: setup_clis.sh [check|install|login|all] [--upgrade] [--only uv,ntn,lark-cli,gh,hf] [--workspace DIR]
 #
 #   check        Show which tools are installed, their versions, and which are logged in. Changes nothing.
 #   install      Install each tool that ~/.local/bin lacks into ~/.local/bin, on macOS and Linux alike,
 #                even if another copy exists elsewhere, such as from Homebrew or apt; that copy stays.
-#   login        Log in to ntn, gh, and hf where not logged in yet. In a terminal, each CLI runs its own
+#   login        Log in to ntn, lark-cli, gh, and hf where not logged in yet. In a terminal, each CLI runs its own
 #                login. Without one, as under an agent or `ssh host 'bash -s'`, each prints a URL and a
 #                code to open in any browser, then waits for the approval. Tokens never pass through here.
 #   all          install, then login (the default).
 #
 #   --upgrade    With install or all: also upgrade the tools already in ~/.local/bin to their latest
-#                release. uv, ntn, and gh are reinstalled only when a newer release exists; hf is
+#                release. uv, ntn, lark-cli, and gh are reinstalled only when a newer release exists; hf is
 #                left to `uv tool install --upgrade`.
-#   --only       A comma-separated subset of uv,ntn,gh,hf (default: all four).
+#   --only       A comma-separated subset of uv,ntn,lark-cli,gh,hf (default: uv,ntn,gh,hf; a Feishu workspace
+#                takes lark-cli in place of ntn).
 #   --workspace  The workspace root whose .env to load (default: the current directory, if it has one).
 #                hf keeps its login under XDG_CACHE_HOME, which .env sets, so the hf login is refused
 #                while that .env does not exist yet; everything else runs without it.
@@ -48,8 +50,8 @@ main() {
 	local t
 	for t in ${only//,/ }; do
 		case "$t" in
-			uv | ntn | gh | hf) TOOLS="$TOOLS $t" ;;
-			*) err "Unknown tool: $t (choose from uv, ntn, gh, hf)"; return 2 ;;
+			uv | ntn | lark-cli | gh | hf) TOOLS="$TOOLS $t" ;;
+			*) err "Unknown tool: $t (choose from uv, ntn, lark-cli, gh, hf)"; return 2 ;;
 		esac
 	done
 	[ -n "$TOOLS" ] || { err "--only lists no tool"; return 2; }
@@ -175,6 +177,8 @@ logged_in() {
 	case "$1" in
 		ntn) ntn api v1/users/me >/dev/null 2>&1 </dev/null ;;
 		gh) gh auth status --hostname github.com >/dev/null 2>&1 </dev/null ;;
+		# Logged in as a user, not only configured with the app's own (bot) identity.
+		lark-cli) lark-cli auth status 2>/dev/null </dev/null | grep -q '"identity": *"user"' ;;
 		hf)
 			# Older versions print "Not logged in" and still exit 0.
 			local out
@@ -188,7 +192,7 @@ logged_in() {
 # Exits non-zero if a tool is not ok, or, except after install, not logged in.
 report() {
 	local t status version login where shadow all_ok=0
-	printf '%-5s %-9s %-10s %-6s %s\n' TOOL STATUS VERSION LOGIN PATH
+	printf '%-8s %-9s %-10s %-6s %s\n' TOOL STATUS VERSION LOGIN PATH
 	for t in $TOOLS; do
 		status="$(status_of "$t")"
 		version="-"; login="-"; where="-"
@@ -209,7 +213,7 @@ report() {
 			fi
 		fi
 		[ "$status" = ok ] || all_ok=1
-		printf '%-5s %-9s %-10s %-6s %s\n' "$t" "$status" "${version:--}" "$login" "$where"
+		printf '%-8s %-9s %-10s %-6s %s\n' "$t" "$status" "${version:--}" "$login" "$where"
 	done
 	return "$all_ok"
 }
@@ -220,7 +224,7 @@ do_install() {
 	has curl || { fail install "curl is required to install anything"; return; }
 	local t
 	# uv first: hf is installed with it.
-	for t in uv ntn gh hf; do
+	for t in uv ntn lark-cli gh hf; do
 		wants "$t" || continue
 		case "$(status_of "$t")" in
 			ok)
@@ -235,7 +239,7 @@ do_install() {
 			elsewhere) say "Installing $t into $BIN_DIR, besides $(first_on_path "$t")" ;;
 			missing) say "Installing $t" ;;
 		esac
-		"install_$t"
+		"install_${t//-/_}"
 		hash -r
 		if [ "$(status_of "$t")" = ok ]; then
 			say "$t $(version_of "$t") is ready: $(command -v "$t")"
@@ -245,13 +249,14 @@ do_install() {
 	done
 }
 
-# The latest release of uv, ntn, or gh, as a bare version such as 1.2.3.
+# The latest release of uv, ntn, lark-cli, or gh, as a bare version such as 1.2.3.
 latest_version() {
 	local v
 	case "$1" in
 		uv) v="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/astral-sh/uv/releases/latest)" ;;
 		gh) v="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/cli/cli/releases/latest)" ;;
 		ntn) v="$(curl -fsSL https://ntn.dev/latest.txt)" ;;
+		lark-cli) v="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/larksuite/cli/releases/latest)" ;;
 	esac || return 1
 	v="${v##*/}"
 	v="$(printf '%s' "${v#v}" | tr -d '[:space:]')"
@@ -287,7 +292,7 @@ upgrade_one() {
 		fi
 		say "Upgrading $t $old to $latest"
 	fi
-	"install_$t"
+	"install_${t//-/_}"
 	hash -r
 	new="$(version_of "$t")"
 	if [ "$(status_of "$t")" != ok ] || { [ -n "$latest" ] && [ "$new" != "$latest" ]; }; then
@@ -344,6 +349,42 @@ install_gh() {
 	return "$rc"
 }
 
+install_lark_cli() {
+	# Feishu's official CLI: a single binary from its release archive, checked against the published
+	# checksums. Its npm package does the same download, but needs Node and a global npm prefix.
+	local os arch tag version name dir rc=1
+	case "$OS" in
+		Linux) os=linux ;;
+		Darwin) os=darwin ;;
+		*) err "Unsupported OS for lark-cli: $OS"; return 1 ;;
+	esac
+	case "$ARCH" in
+		x86_64 | amd64) arch=amd64 ;;
+		aarch64 | arm64) arch=arm64 ;;
+		*) err "Unsupported architecture for lark-cli: $ARCH"; return 1 ;;
+	esac
+	tag="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/larksuite/cli/releases/latest)" || return 1
+	tag="${tag##*/}"
+	version="${tag#v}"
+	case "$version" in [0-9]*) ;; *) err "Could not find the latest lark-cli release"; return 1 ;; esac
+	name="lark-cli-${version}-${os}-${arch}.tar.gz"
+	dir="$(mktemp -d)" || return 1
+	(
+		set -e
+		cd "$dir"
+		curl -fsSLO "https://github.com/larksuite/cli/releases/download/$tag/$name"
+		curl -fsSLO "https://github.com/larksuite/cli/releases/download/$tag/checksums.txt"
+		grep " $name\$" checksums.txt >expected.sha256
+		if has sha256sum; then sha256sum -c expected.sha256; else shasum -a 256 -c expected.sha256; fi
+		tar -xzf "$name" lark-cli
+		mkdir -p "$BIN_DIR"
+		cp lark-cli "$BIN_DIR/lark-cli"
+		chmod 0755 "$BIN_DIR/lark-cli"
+	) && rc=0
+	rm -rf "$dir"
+	return "$rc"
+}
+
 install_hf() {
 	# With uv, hf gets a Python of its own, so it needs neither a system Python nor sudo. Without
 	# --python, uv may pick an old system Python, such as macOS's 3.9, and resolve an old hf.
@@ -361,7 +402,7 @@ install_hf() {
 
 do_login() {
 	local t
-	for t in ntn gh hf; do
+	for t in ntn lark-cli gh hf; do
 		wants "$t" || continue
 		if [ "$(status_of "$t")" = missing ]; then
 			fail "$t" "$t is not installed; run install first"
@@ -376,7 +417,7 @@ do_login() {
 			continue
 		fi
 		say "Logging in to $t"
-		if "login_$t" && logged_in "$t"; then
+		if "login_${t//-/_}" && logged_in "$t"; then
 			say "$t is logged in"
 		else
 			fail "$t" "Could not log in to $t"
@@ -402,6 +443,17 @@ login_ntn() {
 	ntn login --no-browser </dev/null || return 1
 	say "Open the URL above in any browser, check that it shows the code above, and approve."
 	ntn login poll </dev/null
+}
+
+login_lark_cli() {
+	# Two approvals, each in any browser from a URL that lark-cli prints and then waits on. The first
+	# registers an app of the user's own, whose secret goes straight into the system keychain; the
+	# second logs in as the user. The token gets every scope the app has enabled, whatever the login
+	# asks for, deletes included; lark-cli runs a delete or another high-risk write only with --yes.
+	if ! lark-cli config show >/dev/null 2>&1 </dev/null; then
+		lark-cli config init --new --brand feishu </dev/null || return 1
+	fi
+	lark-cli auth login --domain base,docs,drive,wiki </dev/null
 }
 
 login_gh() {

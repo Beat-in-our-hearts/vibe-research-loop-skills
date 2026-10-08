@@ -4,7 +4,7 @@ Agent skills for the vibe-research-loop guide, the research workflow in which AI
 
 | Skill | What it does | Invoked by |
 |---|---|---|
-| [`vrl-init-workspace`](skills/vrl-init-workspace/SKILL.md) | Sets up the workspace, the Notion CLI and pages, and optionally a Hugging Face bucket, or adds a machine to them, from the guide's setup prompts | The user only |
+| [`vrl-init-workspace`](skills/vrl-init-workspace/SKILL.md) | Sets up the workspace, the memory store (Notion, or Feishu) with its CLI and pages, and optionally a Hugging Face bucket, or adds a machine to them, from the guide's setup prompts | The user only |
 | [`vrl-propose-idea`](skills/vrl-propose-idea/SKILL.md) | Writes a testable hypothesis into Ideas, for the user to approve | The user or the agent |
 | [`vrl-plan-experiment`](skills/vrl-plan-experiment/SKILL.md) | Plans the next experiment of an approved idea, for the user to approve | The user or the agent |
 | [`vrl-run-experiment`](skills/vrl-run-experiment/SKILL.md) | Launches and monitors the approved runs, then closes the experiment with its outcome | The user or the agent |
@@ -34,7 +34,7 @@ Run it again to update; it also removes skills a newer release dropped. When a s
 
 With Node.js, [`skills`](https://github.com/vercel-labs/skills) installs them too: `npx skills add Beat-in-our-hearts/vibe-research-loop-skills -g -a claude-code -a codex --all`.
 
-The skills use four CLIs: `uv`, `ntn` (Notion), `gh` (GitHub), and `hf` (Hugging Face). `vrl-init-workspace` installs them and logs in to them; to do that without an agent, run its script in a terminal. It needs no sudo and installs into `~/.local/bin`; add `check` to see what is installed and logged in, `install --upgrade` to upgrade them to their latest releases, or `--only ntn,gh` for a subset:
+The skills use four CLIs: `uv`, `ntn` (Notion), `gh` (GitHub), and `hf` (Hugging Face); a workspace that keeps its research memory in Feishu (飞书) uses `lark-cli` in place of `ntn`. `vrl-init-workspace` installs them and logs in to them; to do that without an agent, run its script in a terminal. It needs no sudo and installs into `~/.local/bin`; add `check` to see what is installed and logged in, `install --upgrade` to upgrade them to their latest releases, or `--only ntn,gh` for a subset:
 
 ```bash
 bash ~/.agents/skills/vrl-init-workspace/scripts/setup_clis.sh
@@ -95,6 +95,7 @@ The agent also picks a research skill on its own when a request matches its desc
 - The research skills write Notion pages in the reply language, unless the workspace's language rules set another one for Notion, but use the English names of the Notion databases and properties, the ones `vrl-init-workspace` creates.
 - Start the agent from the workspace root; the research skills stop anywhere else.
 - The research skills keep the IDs of the Notion project page and databases in the workspace's `docs/notion/ids.md`.
+- The research memory can live in Feishu (飞书, the China edition) instead of Notion: `vrl-init-workspace` asks which. In Feishu, each project is a wiki doc with a Base holding the Ideas, Experiments, and Findings tables, and each entry is a record plus a doc for its body; the workspace's `docs/AGENTS/feishu.md` tells the research skills what each Notion step becomes. Everything else, the review by colors included, works the same, except that record fields carry no color: review their values in the entry's doc.
 
 ## Reviewing a Notion page
 
