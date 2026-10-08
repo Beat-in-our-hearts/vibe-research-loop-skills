@@ -11,6 +11,7 @@ Agent skills for the vibe-research-loop guide, the research workflow in which AI
 | [`vrl-analyze-results`](skills/vrl-analyze-results/SKILL.md) | Fills the results and conclusion of a finished experiment | The user or the agent |
 | [`vrl-write-finding`](skills/vrl-write-finding/SKILL.md) | Drafts a finding from an idea's experiments, or from any verified result such as a performance test, for the user to confirm, then closes the idea it resolves, if any | The user or the agent |
 | [`vrl-search-papers`](skills/vrl-search-papers/SKILL.md) | Adds at most three papers per search to the Literature Library | The user or the agent |
+| [`vrl-night-watch`](skills/vrl-night-watch/SKILL.md) | Keeps the GPUs busy overnight with approved experiments, without asking anything, and leaves a morning report | The user only |
 
 ## Install in one prompt
 
@@ -89,11 +90,12 @@ Green steps are what the agent does, each with the Notion status it leaves behin
 | Claude Code | `/vrl-plan-experiment`, followed by any details |
 | Codex | `$vrl-plan-experiment`, followed by any details |
 
-The agent also picks a research skill on its own when a request matches its description; `vrl-init-workspace` runs only when the user invokes it.
+The agent also picks a research skill on its own when a request matches its description; `vrl-init-workspace` and `vrl-night-watch` run only when the user invokes them.
 
 - Run `vrl-init-workspace` first, once per machine. It carries its own copy of the guide, so the guide never needs to be cloned. The research skills rely on the workspace's rules and on the page templates in that guide, so the Notion databases need no templates of their own: each new page starts from its database's template, whose gray instructions say what goes where. Once they fill a section, they delete its instructions from the page and keep only the content.
 - The research skills write Notion pages in the reply language, unless the workspace's language rules set another one for Notion, but use the English names of the Notion databases and properties, the ones `vrl-init-workspace` creates.
 - Start the agent from the workspace root; the research skills stop anywhere else.
+- Before bed, start `/loop /vrl-night-watch` in Claude Code. From 22:00 to 10:00, or the hours you give it, the agent launches approved experiments whenever a GPU is free, asks you nothing, and leaves a morning report of what ran and what waits for you.
 - The research skills keep the IDs of the Notion project page and databases in the workspace's `docs/notion/ids.md`.
 
 ## Reviewing a Notion page
