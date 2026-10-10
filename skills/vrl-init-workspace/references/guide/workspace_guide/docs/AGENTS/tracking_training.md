@@ -9,8 +9,8 @@
   - Done: the result, with the comparison and its p-value; write > or < only when the difference is significant, and ≈ otherwise; add any published reference number.
   - Running: epoch and step, overall progress, the latest losses, and the GPU it runs on.
   - Waiting: what it needs and how long it should take.
-- Resource rows: Status is the usage in percent, which for a GPU is its utilization; Details give used / limit, and for a GPU also its power and the task it runs. Read the real limits, not host-wide numbers: the container's memory limit, `nvidia-smi` for each GPU, and the quota of the filesystem that holds the outputs.
-- Below the table, add one line for each thing that needs the user: a failure, a limit nearly reached, a result that looks too good.
+- Resource rows: take the GPU and memory rows from `resources.sh --rows --allowed <the GPU ids experiments may use>`, one of the VRL scripts, which reads the real limits: `nvidia-smi` for each GPU and the container's memory limit. Status is the usage in percent, which for a GPU is its utilization; Details give used / limit, and for a GPU also its power and the run it serves. Keep its storage row, the filesystem from `df`, and add a storage quota row from this machine's quota command when it has one.
+- Below the table, add one line for each thing that needs the user: a failure, a limit nearly reached, a result that looks too good, a GPU that `resources.sh` lists as not free for a reason no run explains, such as another user's process, and any `note:` it prints.
 
 ## Example
 
@@ -23,7 +23,7 @@
 | Env C, train method X | ▶ Training | Epoch 3/5, step 10,200 (about 56 % overall); val loss 0.0087; GPU 0 |
 | Env C, eval method X | ⏳ | 13 seeds, about 3 min each |
 | Env C, train baseline | ⏳ | About 3.3 h, 8 workers |
-| GPU 0 | 96 % | Memory 38.2 / 46.0 GiB, power 344 / 350 W; Env C, train method X |
-| GPU 1 | 0 % | Memory 0.4 / 46.0 GiB, power 31 / 350 W; idle |
+| GPU 0 | 96 % | Memory 38.2 / 46.0 GiB, power 344 / 350 W; run 2026-09-30-env-c-comparison/train-method-x |
+| GPU 1 | 0 % | Memory 0.0 / 46.0 GiB, power 31 / 350 W; no process |
 | Memory | 64 % | 102 / 160 GiB |
 | Storage quota | 81 % | 1.21 / 1.50 TB |

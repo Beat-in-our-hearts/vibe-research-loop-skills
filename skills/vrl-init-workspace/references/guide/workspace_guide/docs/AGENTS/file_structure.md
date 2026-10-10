@@ -16,7 +16,7 @@ workspace/                       # the directory agents are launched from
 ├── docs/                        # Markdown documents
 │   ├── AGENTS/                  # basic rules for agents, one topic per file
 │   └── plans/
-│       └── <date>-<name>.md     # experiment plan: a link to its Notion page, each run's config and launch command
+│       └── <date>-<name>.md     # experiment plan: a link to its Notion page, and per run its config and a ```bash run=<run> block
 ├── logs/                        # logs of long-running commands
 │   ├── <date>-<name>/
 │   │   └── <run>.log            # one log per run of an experiment
@@ -44,8 +44,8 @@ workspace/                       # the directory agents are launched from
 | `worktrees/` | One checkout of `main_repo` per branch, named after the branch with any `/` replaced by `-`. The `main_repo/` rules apply. |
 | `ref_repos/` | One folder per repository, named as upstream. Record its URL and commit in the Code row of every experiment that uses it. Change it only on a local branch, and never push. |
 | `data/` | Read-only. Save processed data as a new version. |
-| `docs/` | Markdown only. Change `AGENTS/` only when the user asks. Keep one plan per experiment in `plans/`, holding each run's config file and launch command for its Notion page; put other documents in subfolders by topic. |
-| `logs/` | One log per long-running command, named as in the tree. |
+| `docs/` | Markdown only. Change `AGENTS/` only when the user asks. Keep one plan per experiment in `plans/`, holding each run's config file and its launch command in a fenced block whose info string also pins its GPU count and its checkout's commit and diff, such as ```` ```bash run=baseline gpus=1 code=main_repo@<commit> diff=clean ````; its Notion page records the SHA-256 of the plan the user approved, so a change to the plan or the code needs a new approval. Put other documents in subfolders by topic. |
+| `logs/` | One log per long-running command, named as in the tree and written by `launch_run.sh`. |
 | `runs/` | Never overwrite or delete a finished run; give a rerun a new run name. |
 | `tests/` | Test code only: a test writes its outputs to `tmp/tests/<repo>/<topic>/` and its log to `logs/`; an output kept as evidence is a run and belongs in `runs/`. Write no tests by default: verify with a short smoke run (a few steps on a small subset), logged in `logs/`. Write a test only when the user asks, or to pin down a bug in shared code such as data processing, losses, or metrics. Add tests to `main_repo`'s own suite only when the user asks. |
 | `tmp/` | Anything here may be deleted at any time, so nothing in Notion or elsewhere may point to it. |

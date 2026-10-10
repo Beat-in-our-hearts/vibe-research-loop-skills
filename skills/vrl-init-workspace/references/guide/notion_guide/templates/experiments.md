@@ -14,7 +14,7 @@ Everything below the line is the body of a new page in the database. The agent t
 <aside>
 📋 **Review**
 
-*Rewrite this callout each time the page goes to the user, in at most five lines. Decide: the action, then where to look. For the plan: "Approve stage N: tick Human Approved", then what to check: the deviations by number, the data flow, and every write outside the worktree, the run folders, and the logs, which the approval also allows. For the results: review the code under Code changes in section 2 and say so, since the code-review check in section 4 passes only then; then the next step in section 5. Key numbers: for the plan, the runs and seeds, the total wall-clock time against the budget left, and whether it was measured or estimated; for the results, whether the criteria under Decided by were met, with the deciding number. Changed: what is new since the user's last review, or "first review".*
+*Rewrite this callout each time the page goes to the user, in at most five lines. Decide: the action, then where to look. For the plan: "Approve stage N: tick Human Approved", then what to check: the deviations by number, the data flow, and every write outside the worktree, the run folders, and the logs, which the approval also allows; and that ticking approves the launch commands in the plan file, SHA-256 `<its first 12 digits>`, so that any later change to it, the code, or a config needs a new approval. For the results: review the code under Code changes in section 2 and say so, since the code-review check in section 4 passes only then; then the next step in section 5. Key numbers: for the plan, the runs and seeds, the total wall-clock time against the budget left, and whether it was measured or estimated; for the results, whether the criteria under Decided by were met, with the deciding number. Changed: what is new since the user's last review, or "first review".*
 
 - **Decide:** *…*
 - **Key numbers:** *…*
@@ -57,7 +57,7 @@ Everything below the line is the body of a new page in the database. The agent t
 
 *The plan review reads it to check what the code computes, and the code review reads it with the code. Fill it from the code, the config snapshots, and the launch record, never from config names or memory. Before the smoke run, write the planned values and mark them as planned; replace them from the snapshots once it passes.*
 
-*Model: architecture and initial weights, name plus version or hash. Data: dataset version and splits. Code: repository, branch, base commit, worktree, and entry point; the plan file `docs/plans/<date>-<name>.md`, which holds each run's config file and launch command; and the launch commit once a run starts. Evaluation: metrics, the evaluation code version, locked for the whole comparison, and the statistics: how the spread over seeds is reported and the test of significance, such as mean ± std over 3 seeds and Welch's t-test. When evaluation runs in an environment rather than on a fixed test set, add an Environment row: the environment and its version, the number of evaluation episodes, and the success definition.*
+*Model: architecture and initial weights, name plus version or hash. Data: dataset version and splits. Code: repository, branch, base commit, worktree, and entry point; the plan file `docs/plans/<date>-<name>.md`, which holds each run's config file and launch command, and, once the plan goes to approval, the plan file's SHA-256; and the launch commit once a run starts. Evaluation: metrics, the evaluation code version, locked for the whole comparison, and the statistics: how the spread over seeds is reported and the test of significance, such as mean ± std over 3 seeds and Welch's t-test. When evaluation runs in an environment rather than on a fixed test set, add an Environment row: the environment and its version, the number of evaluation episodes, and the success definition.*
 
 | Item | Content |
 |---|---|
@@ -130,10 +130,11 @@ Everything below the line is the body of a new page in the database. The agent t
 
 ## 5. Conclusion
 
-*Criteria met: yes or no against Decided by in section 1, citing the Table 1 row; for an earlier stage, Decided by is its Go on when, so yes lets the next stage run and does not yet mean the idea holds. Next step: check the idea's Budget limits, then the next stage, or the part of it that fits the budget left, or stop iterating and draft the finding. Reproduce: one command that reruns the whole comparison from a clean checkout.*
+*Criteria met: yes or no against Decided by in section 1, citing the Table 1 row; for an earlier stage, Decided by is its Go on when, so yes lets the next stage run and does not yet mean the idea holds. Next step: check the idea's Budget limits, then the next stage, or the part of it that fits the budget left, or stop iterating and draft the finding. Reproduce: one command that reruns the whole comparison from a clean checkout. GPU hours: one line per machine, its single-GPU hours from `gpu_hours.py` once its runs have ended, with any hours it could not count.*
 
 | Item | Content |
 |---|---|
 | Criteria met | *…* |
 | Next step | *…* |
 | Reproduce | *…* |
+| GPU hours | *…* |

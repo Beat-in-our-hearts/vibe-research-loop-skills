@@ -13,7 +13,7 @@ In every repository:
 - Stage the files you changed by path; never `git add -A` or `git add .`. Leave files you did not create alone, and mention them in your report.
 - Never commit data, checkpoints, logs, caches, or credentials.
 - Never force-push, rewrite pushed history, or run destructive commands such as `reset --hard`, `clean`, or a forced checkout, unless the user asks.
-- When you launch a run from uncommitted changes, save `git diff` in its output folder.
+- A run may start from uncommitted changes: `launch_run.sh` saves the diff that rebuilds the checkout in the run's output folder, which a free-form launch must therefore name with `--outputs`.
 
 ## Workspace repository
 

@@ -6,7 +6,7 @@ R="$SCRIPTS/resources.sh"
 export PATH="$FAKES:$PATH" FAKE_GPU_DIR="$TMP_ROOT/gpu"
 mkdir -p "$FAKE_GPU_DIR" "$TMP_ROOT/ws/logs/d" "$TMP_ROOT/ws/runs" "$TMP_ROOT/bin"
 cd "$TMP_ROOT/ws" || exit 1
-GPUS='0, GPU-a, 96, 39117, 47104, 344.1, 350.0
+GPUS='0, GPU-a, 96, 39117, 47104, 344.1, 350.0, NVIDIA A100-SXM4-80GB
 1, GPU-b, 0, 12, 47104, 31.0, 350.0
 2, GPU-c, 0, 3, 81559, [N/A], [N/A]
 3, GPU-d, 100, 200, 81559, 300.0, 400.0
@@ -72,13 +72,25 @@ test_hung_nvidia_smi() {
 	return 0
 }
 
+test_gpu_rows_name_the_model() {
+	run bash "$R" --samples 1 --rows
+	expect_out "| GPU 0 | 96 % | NVIDIA A100-SXM4-80GB, memory 38.2 / 46.0 GiB"
+}
+
+test_pbs_makes_free_unknown() {
+	printf '#!/bin/sh\n' >"$TMP_ROOT/bin/qsub"; chmod +x "$TMP_ROOT/bin/qsub"
+	PATH="$TMP_ROOT/bin:$PATH" run bash "$R" --samples 1
+	rm -f "$TMP_ROOT/bin/qsub"
+	expect_out "free: unknown (a job scheduler"
+}
+
 test_slurm_makes_free_unknown() {
 	printf '#!/bin/sh\n' >"$TMP_ROOT/bin/sbatch"; chmod +x "$TMP_ROOT/bin/sbatch"
 	PATH="$TMP_ROOT/bin:$PATH" run bash "$R" --samples 1
 	rm -f "$TMP_ROOT/bin/sbatch"
-	expect_out "free: unknown (a Slurm scheduler" && expect_out "note: this machine has a Slurm scheduler"
+	expect_out "free: unknown (a job scheduler" && expect_out "note: this machine has a job scheduler"
 	SLURM_JOB_ID=42 run bash "$R" --samples 1
-	expect_out "free: unknown (inside a Slurm job"
+	expect_out "free: unknown (inside a scheduler's job"
 }
 
 test_logs_through_a_symlink_and_missing_logs() {

@@ -25,7 +25,8 @@ if [ "$G" = 1 ]; then
 fi
 alive() { [ -f "$state/master" ] && kill -0 "$(cat "$state/master")" 2>/dev/null; }
 case "$O" in
-	check) if alive; then echo "Master running (pid=$(cat "$state/master"))" >&2; exit 0; fi
+	check) [ -z "${FAKE_SSH_CHECK_HANG:-}" ] || exec sleep 1000
+		if alive; then echo "Master running (pid=$(cat "$state/master"))" >&2; exit 0; fi
 		echo "Control socket connect($sock): No such file or directory" >&2; exit 255 ;;
 	exit) if alive; then kill "$(cat "$state/master")"; rm -f "$state/master"; fi; exit 0 ;;
 esac

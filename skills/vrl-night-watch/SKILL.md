@@ -1,42 +1,59 @@
 ---
 name: vrl-night-watch
-description: Keep watch over a vibe-research-loop workspace while the user sleeps, by default from 22:00 to 10:00 in the project's time zone - without asking the user anything, launch the next approved experiment whenever a GPU is free and not claimed, monitor the runs, and leave a morning report of what ran and what waits for the user. Use only when the user starts it, usually through a self-paced loop.
-disable-model-invocation: true
+description: Keep watch over a vibe-research-loop workspace while the user sleeps, by default from 22:00 to 10:00 in the project's time zone - without asking the user anything, launch the next approved run whenever a GPU is free and not claimed, monitor the runs, and leave a morning report of what ran and what waits for the user. Never pick it on your own; use it only when the user starts it by name, usually through `/loop /vrl-night-watch` or a scheduled automation.
 ---
 
 # Night watch
 
 While the user sleeps, keep the GPUs busy with work the user has already approved, and never wait for an answer. The user starts it before going to bed:
 - in Claude Code, with `/loop /vrl-night-watch` and no interval, so that you choose each wake-up yourself;
+- in Codex, from an automation that runs `$vrl-night-watch` every 30 minutes, in the workspace itself, not in a worktree, which has no `.env`, `logs/`, or `runs/`;
 - elsewhere, from a scheduled job, such as cron, that runs this skill every half hour.
 
-Other hours go after the command, such as `/vrl-night-watch 23:00-08:00`.
+Other hours go after the command, such as `/vrl-night-watch 23:00-08:00`; otherwise the window runs from 22:00 to 10:00, in the project's time zone, the `TZ` in `.env`. The watch's memory is `logs/<date>-night-watch.log`, where `<date>` is the date of the window's last morning: a wake-up remembers nothing else, and on a fixed interval each one is a new session.
 
-1. **Start.** At the first wake-up:
-   - Take the window from the command, or else 22:00 to 10:00, in the project's time zone, the `TZ` in `.env`. Before the window starts, schedule the next wake-up at its start and end the turn.
-   - Check that this session can run unattended. If a command the watch needs would stop for a permission prompt, tell the user now, before the window starts, how to allow it, such as with an allowlist or Claude Code's auto mode, but never with a mode that skips every check. Such commands include `nvidia-smi`, a launch command, the memory store's CLI (`ntn` or `lark-cli`), and `ssh` in remote mode.
-   - Tell the user the window, the approved experiments in line, and the time of the morning report.
+1. **Permissions.** When the user is there to read it, at the first wake-up of `/loop` or when they run the skill by hand before they create an automation or a job, check that the watch can run unattended, and give them the exact rules it needs, for their own settings or `.claude/settings.local.json`, never a settings file the workspace repository shares. Recommend Claude Code's `dontAsk` mode, and never a mode that skips every check. Write the rules with this machine's values: the path `S` of the VRL scripts in `docs/AGENTS/machine.md`, and in remote mode the alias `A`, the remote workspace `R`, and the command limit `L` in `docs/AGENTS/remote.md`, and the GPU ids `I` in `docs/AGENTS/machine.md`. Call every script as the rules write it, as `bash S/<script>` with `S` spelled out, `check_update.sh` included.
+   - Allow:
+     - `date`, and reads of the skills folders, `~/.agents/skills/` and `~/.claude/skills/`;
+     - `bash S/check_update.sh`, and `--help` of each script;
+     - `bash S/resources.sh --allowed I`, `python3 S/gpu_hours.py`, and `bash S/launch_run.sh --plan docs/plans/`; in remote mode, in place of these three, `bash S/vrl_ssh.sh check A`, `bash S/vrl_ssh.sh connect A`, and `bash S/vrl_ssh.sh script A --workspace R --limit L -- ` followed by `resources.sh --allowed I`, `gpu_hours.py`, or `launch_run.sh --plan docs/plans/`;
+     - the tmux session's start command and the quota command in `docs/AGENTS/machine.md`, each exactly as written there;
+     - the memory store's page API: `ntn api v1/`, or `lark-cli base`, `lark-cli docs`, and `lark-cli wiki`;
+     - edits of the night-watch logs, `logs/*-night-watch.log`, through the mount in remote mode.
+   - Deny: `launch_run.sh` with `--resume` or `--new-session`; `ntn auth`, `ntn login`, `ntn logout`, `ntn files`, `ntn workers`, and `ntn update`; any `ntn api` call with the method `DELETE`, `in_trash` or `archived`, or data read from a file with `@`; any `lark-cli` call with `--yes`; and edits of `docs/`, `.env`, `.claude/`, and the code folders.
+   - In Codex, prefix rules match whole arguments and cannot deny an argument anywhere in a command, so write them as `["bash", "S/launch_run.sh", "--plan"]` and so on, and tell the user that the denies hold there only as this skill's rules. The automation's sandbox also needs network access, for `ssh` and the memory store's CLI.
+   - Tell the user what these rules leave open: they match the text of a command, so a call written another way can slip past a deny; the allowed page writes can still tick Human Approved or change the Code row; and nothing but these rules and the steps below keeps the watch from launching a plan the user did not approve.
+   Then tell the user the window, the approved runs in line, and the time of the morning report.
 2. **No questions.** Inside the window, never ask the user anything, and never wait for an answer or a prompt.
    - Wherever a step here or in vrl-run-experiment would need the user, leave that work where it is and record what they must decide, and why, for the morning report. Such steps include an approval, a deviation, a failed Go on when condition, and a fix that changes the plan.
-   - Launch only what the user approved. Never plan or approve an experiment; never change code, a config, or a plan; and never stop a process you did not start.
-3. **Each wake-up.**
-   1. **Runs.** Check every run of the experiments with Status Running, as steps 4 and 5 of vrl-run-experiment do: update their pages, restart a run that stopped for an outside reason, and close an experiment whose runs have all ended, leaving its analysis for the morning report. A run that needs a fix stays stopped.
-   2. **GPUs.** Read `nvidia-smi`, and the scheduler's queue if `docs/AGENTS/machine.md` names a scheduler. A GPU is free when no process runs on it, its memory is nearly empty, and nothing claims it: no waiting run of a Running experiment is assigned to it, no scheduler job holds it, and no one else uses it.
-   3. **Next experiment.** When a GPU is free, take the approved experiment next in line: Status Planned and Human Approved checked, by its idea's Priority, then the earliest Created. Launch it as steps 1, 3, and 4 of vrl-run-experiment do, but only if all of these hold; otherwise record why, and try the next one:
-      - its plan file holds a launch command for each run, and the steps before approval are done, the smoke run included;
-      - its runs assigned to this machine fit the free GPUs, or its steps let them start one at a time;
-      - the idea's Budget limits allow it, counted as vrl-plan-experiment counts the budget left, and the storage that holds the outputs is not nearly full.
-   4. **Next wake-up.** Schedule it by what comes next: soon after a run's next evaluation or end, so that a freed GPU does not sit idle; at most an hour later while nothing changes, to catch a GPU that someone else frees; and at the end of the window.
-4. **Morning report.** At the end of the window, stop launching and end the scheduled wake-ups; the runs keep going. Show the user the report, and append it to `logs/<date>-night-watch.log`, where `<date>` is the morning's date:
+   - Launch only what the user approved. Never plan or approve an experiment; never change code, a config, a plan, or the SHA-256 in the Code row; never pass `--resume` or `--new-session`; and never stop a process you did not start.
+   - Append each launch, with its commit, and each restart, refusal, and skipped experiment to the night-watch log at once: it is the list of the processes the watch started.
+3. **Each wake-up.** Read the time with `date`, and work out the window that is running, or else the last one that ended and the next one to come, with each end's date and UTC offset, such as `2026-10-08 22:00 +04:00`.
+   - On a fixed interval, a wake-up can start before the last one has ended: if the night-watch log's last `wake-up <time> started` line is less than an hour old and no `wake-up <time> ended` line follows it, end the turn. Otherwise append the started line, and the ended line when the wake-up ends. With `/loop`, wake-ups never overlap.
+   - Before the window, once it is less than an hour away and its log does not exist, create the log with the window's two ends.
+   - Inside the window, create the log if it does not exist, then do step 4.
+   - After the window, do step 5 if the last window's log holds no report yet.
+   - With `/loop`, end every wake-up by scheduling the next, at most an hour away, since the loop allows no longer and ends after a wake-up that schedules none: inside the window, soon after a run's next evaluation or end, so that a freed GPU does not sit idle, at most an hour later while nothing changes, to catch a GPU that someone else frees, and at the window's end; outside it, an hour later, or at the window's start if that is sooner. Stop the loop after the morning report. On a fixed interval, end the turn.
+4. **Inside the window.**
+   1. **Runs.** Check every run of the experiments with Status Running, as steps 4 and 5 of vrl-run-experiment do: update their pages, and close an experiment whose runs have all ended, leaving its analysis for the morning report. Restart only a run whose log has no footer and no live process, as after a node failure, with `--restart`, after starting the tmux session again if it is gone; a run whose log has a footer ended under its own shell, by its own exit code or the user's stop, so it stays as it is. A run that needs a fix stays stopped.
+   2. **GPUs.** Run `resources.sh --allowed <the GPU ids in docs/AGENTS/machine.md>`. The GPUs on its `free:` line are free. `free: unknown`, no `free:` line, or a failed call means no GPU is free; record the reason, and every `note:` line, for the morning report. With a job scheduler, the watch launches nothing.
+   3. **Launch.** While a GPU is free, launch the next run in line, as steps 1, 3, and 4 of vrl-run-experiment do: first the waiting runs of Running experiments, oldest experiment first, as their post-approval steps let them start; then the runs of the approved experiment next in line, Status Planned and Human Approved checked, by its idea's Priority, then the earliest Created. Launch a run only if all of these hold; otherwise record why, and try the next one:
+      - its plan file holds a block for each run, its page's Code row holds the SHA-256, and every step before the run is done, the smoke run included, or is itself a run;
+      - it fits the free GPUs and is assigned to this machine, and the tmux session exists, or starts with its command;
+      - the idea's Budget limits allow it, counted as vrl-plan-experiment step 1 counts the budget left, with `gpu_hours.py`, which must not exit 3; and the storage that holds the outputs is not nearly full, by its quota command where `docs/AGENTS/machine.md` names one.
+      If `launch_run.sh` exits with anything but 0, record its reason, and launch nothing more of that experiment.
+5. **Morning report.** At the first wake-up after the window, stop launching; the runs keep going. Show the user the report, and append it to the night-watch log:
    - what ran overnight: each run launched, finished, or restarted, with its experiment, its GPU, and its outcome or progress;
-   - each GPU's use over the night, and when one sat idle, why;
+   - each GPU's use over the night, from `gpu_hours.py --json --since '<window start>' --until '<window end>'` on the logs folder, with dates and UTC offsets: a GPU of `docs/AGENTS/machine.md` with fewer hours in `by_gpu` than the window is long, or missing from it, sat idle for the rest, so give why, from the night-watch log; list any hours it could not count;
+   - the runs still going, with their ETA: nothing watches them now, so the user picks them up with vrl-run-experiment;
    - what waits for the user, each item with what they need to decide: an experiment skipped, a run stopped for a fix, an approval to give, or a finished experiment to analyze.
 
 ## Rules
 
 - At the start, run `bash <this skill's folder>/../vrl-init-workspace/scripts/check_update.sh` where the skills are installed, the local machine in remote mode. If it reports a newer release, tell the user once in the session, with the update command it prints, and go on; never update the skills unless the user asks.
 - Work from the root of a vibe-research-loop workspace, the directory with `AGENTS.md` and `docs/AGENTS/`, and follow its rules. Anywhere else, tell the user and stop.
-- If `docs/AGENTS/remote.md` exists, this machine computes on a remote host over SSH, and that file says where each path lives and where each command runs: every workspace path but `AGENTS.md` and `docs/AGENTS/` is in the remote workspace, read and written locally through the mount; everything but file edits, `ntn`, and web requests runs on the remote host through the SSH master. Never fall back to the local machine.
+- If `docs/AGENTS/remote.md` exists, this machine computes on a remote host over SSH, and that file says where each path lives and where each command runs: every workspace path but `AGENTS.md` and `docs/AGENTS/` is in the remote workspace, read and written locally through the mount; everything but file edits, `ntn`, and web requests runs on the remote host through the SSH master, with `vrl_ssh.sh`. Never fall back to the local machine.
+- The scripts in `<this skill's folder>/../vrl-init-workspace/scripts/` do what must not be improvised: `launch_run.sh` starts every long-running command, `resources.sh` reports resources and free GPUs, `gpu_hours.py` counts GPU hours, and `vrl_ssh.sh` reaches the remote host. Read a script's `--help` before its first use in a session. When one refuses or cannot count something, with exit code 3, tell the user why; never work around it by hand unless a rule file says how.
 - If `docs/AGENTS/feishu.md` exists, the project's memory store is Feishu, not Notion: wherever this skill names Notion, `ntn`, a page, a database, or a property, do what that file says instead. It replaces the rules below that only make sense in Notion.
 - Use the `ntn` CLI for Notion, and look up its usage live: `ntn --help`, `ntn api ls`, `ntn api <path> -X <method> --spec`. Always run `ntn api ... < /dev/null`, or it waits on stdin.
 - Take the IDs of the project page and the databases from `docs/notion/ids.md`. If it is missing, find them with `ntn api v1/search` by exact title, reading every page of results; ask the user which project if several match, and record the IDs there in a table with the columns Object, Title in Notion, Page ID, Database ID, and Data source ID.

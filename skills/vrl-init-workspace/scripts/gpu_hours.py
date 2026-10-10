@@ -35,6 +35,7 @@ import json
 import os
 import re
 import sys
+import time
 
 KEY = re.compile(r"^\s*#\s*([A-Za-z-]+)\s*:\s?(.*)$")
 STDOUT_MARK = re.compile(r"#\s*-{3,}\s*stdout\s*\+\s*stderr\s*-{3,}")
@@ -356,6 +357,26 @@ def shown(path):
     return path if rel.startswith("..") else rel
 
 
+def workspace_tz():
+    """The time zone named by TZ in ./.env, else this process's own."""
+    try:
+        with open(".env") as f:
+            for line in f:
+                if line.startswith("TZ="):
+                    name = line[3:].strip().strip("'\"")
+                    try:
+                        from zoneinfo import ZoneInfo  # Python 3.9 and later
+                        return ZoneInfo(name)
+                    except Exception:
+                        os.environ["TZ"] = name
+                        if hasattr(time, "tzset"):
+                            time.tzset()
+                        break
+    except OSError:
+        pass
+    return datetime.datetime.now().astimezone().tzinfo
+
+
 def main(argv):
     as_json, since, until, targets = False, None, None, []
     args = list(argv)
@@ -370,7 +391,7 @@ def main(argv):
             if not args:
                 print("gpu_hours: %s needs a time" % a, file=sys.stderr)
                 return 2
-            t = parse_time(args.pop(0), datetime.datetime.now().astimezone().tzinfo)
+            t = parse_time(args.pop(0), workspace_tz())
             if t is None:
                 print("gpu_hours: cannot read the time after %s" % a, file=sys.stderr)
                 return 2
@@ -423,7 +444,8 @@ def main(argv):
         print("| %s | %s | %s | %s | %s | %s | %s |" % (
             shown(r["log"]).replace("|", "\\|"), r["machine"].replace("|", "\\|"),
             (r["started"] or "?").replace("|", "\\|"),
-            "?" if r["gpus"] is None else (",".join(map(str, r["gpu_ids"])) if r["gpu_ids"] else str(r["gpus"])),
+            "?" if r["gpus"] is None else ("GPU " + ",".join(map(str, r["gpu_ids"])) if r["gpu_ids"]
+                                           else ("none" if r["gpus"] == 0 else "%d GPUs" % r["gpus"])),
             "?" if r["hours"] is None else "%.2f" % r["hours"],
             "?" if r["gpu_hours"] is None else "%.2f" % r["gpu_hours"],
             "; ".join(r["notes"]).replace("|", "\\|")))

@@ -42,7 +42,8 @@ Options:
 The alias must be a Host entry of ~/.ssh/config; when docs/AGENTS/remote.md exists here, it must be the
 alias of the line that names both `ssh <alias>` and `Host <alias>`. No client logs in by itself: every
 one goes through the master's socket, with ProxyCommand=false, so it fails when the master is gone.
-Every call prints `__EXIT <code>` as its last line, on a line of its own. Exit codes:
+Every call prints `__EXIT <code>` as its last line, on a line of its own. For run and script, the code
+is the remote command's own, unless the line above it starts with `vrl_ssh:`. Exit codes:
   0    done; for run and script, the command's own exit code otherwise
   1    the remote host, or the master, does not answer: run connect, or stop and report
   2    bad arguments, or a folder or alias that the rules do not allow
@@ -50,6 +51,7 @@ Every call prints `__EXIT <code>` as its last line, on a line of its own. Exit c
   4    check --mount: the mount is not listed
   5    the host key could not be verified: stop and report; never turn off host-key checking
   6    no master is up: run connect first
+  7    the master hangs: run connect
   98   the remote workspace has no .env: pass --no-env if setup has not written it yet
   124  a time limit cut the call
   129, 130, 143  the call was ended by SIGHUP, SIGINT, or SIGTERM
@@ -195,21 +197,38 @@ script_dir() {
 	cd "$(dirname "$f")" 2>/dev/null && pwd -P
 }
 
-# The alias must be a Host entry, and, where the rules name one, the rules' alias.
+# The alias must match a Host line of ~/.ssh/config or a file it includes, and, where the rules name
+# one, be the rules' alias.
 check_alias() {
-	local re line rules
-	re="$(printf '%s' "$ALIAS" | sed 's/[.]/\\./g')"
-	# With -q, grep succeeds on a match even when another file, such as a missing config.d, errs.
-	if ! grep -Eiqs "^[[:space:]]*Host[[:space:]=]([^#]*[[:space:]])?$re([[:space:]]|\$)" ~/.ssh/config ~/.ssh/config.d/* 2>/dev/null; then
-		err "$ALIAS is not a Host entry of ~/.ssh/config: add one first, as remote_prompts.md says"
+	local files f inc rules count token found=0
+	files="$(ls -d ~/.ssh/config 2>/dev/null)"
+	for inc in $(awk 'tolower($1) == "include" { for (i = 2; i <= NF; i++) print $i }' ~/.ssh/config 2>/dev/null); do
+		case "$inc" in /* | "~"*) ;; *) inc="$HOME/.ssh/$inc" ;; esac
+		inc="${inc/#\~/$HOME}"
+		# The include may be a glob, such as config.d/*.
+		for f in $inc; do [ -f "$f" ] && files="$files
+$f"; done
+	done
+	while IFS= read -r f; do
+		[ -n "$f" ] || continue
+		for token in $(awk 'tolower($1) == "host" { for (i = 2; i <= NF; i++) print $i }' "$f" 2>/dev/null); do
+			case "$token" in "!"*) continue ;; esac
+			# shellcheck disable=SC2254 # A Host token is a glob pattern.
+			case "$ALIAS" in $token) found=1 ;; esac
+		done
+	done <<EOF
+$files
+EOF
+	if [ "$found" = 0 ]; then
+		err "$ALIAS matches no Host line of ~/.ssh/config: ask the user, as remote_prompts.md says"
 		return 1
 	fi
 	[ -e docs/AGENTS/remote.md ] || return 0
 	[ -f docs/AGENTS/remote.md ] || { err "docs/AGENTS/remote.md is not a file"; return 1; }
 	# The line that names the remote host holds both code spans, `ssh <alias>` and `Host <alias>`.
 	rules="$(sed -n 's/.*`ssh \([A-Za-z0-9._-]*\)`.*`Host \1`.*/\1/p' docs/AGENTS/remote.md | sort -u)"
-	line="$(printf '%s\n' "$rules" | grep -c .)"
-	if [ "$line" != 1 ]; then
+	count="$(printf '%s\n' "$rules" | grep -c .)"
+	if [ "$count" != 1 ]; then
 		err "docs/AGENTS/remote.md must name the remote host on one line, as \`ssh <alias>\` and \`Host <alias>\`"
 		return 1
 	fi
@@ -311,7 +330,7 @@ need_master() {
 	rc=$?
 	case "$rc" in
 		0) return 0 ;;
-		124) err "The master does not answer $ALIAS's socket: run connect"; return 1 ;;
+		124) err "The master does not answer its socket: run connect"; return 7 ;;
 		*) err "No master is up for $ALIAS: run connect first"; return 6 ;;
 	esac
 }
@@ -332,7 +351,7 @@ check_connection() {
 	rc=$?
 	case "$rc" in
 		0) ;;
-		124) printf 'connection: the master does not answer its socket\n'; return 1 ;;
+		124) printf 'connection: the master does not answer its socket\n'; return 7 ;;
 		*) printf 'connection: no master is up for %s\n' "$ALIAS"; return 6 ;;
 	esac
 	round_trip
@@ -364,11 +383,21 @@ own_masters() {
 }
 
 connect() {
-	local errors rc p
+	local errors rc p saved="$DEADLINE"
+	# The first look gets at most a third of the limit, and 5 seconds, so that a hung master leaves time
+	# to start a new one.
+	if [ "$DEADLINE" != 0 ]; then
+		local first=$((LIMIT / 3))
+		[ "$first" -le 5 ] || first=5
+		[ "$first" -ge 1 ] || first=1
+		DEADLINE=$(($(date +%s) + first))
+	fi
 	if master_check && round_trip; then
+		DEADLINE="$saved"
 		printf 'connection: %s answers through the master (%s s)\n' "$ALIAS" "$ROUND_TRIP_SECONDS"
 		return 0
 	fi
+	DEADLINE="$saved"
 	printf 'connection: no answer; closing the old master\n'
 	with_limit /dev/null ssh -S "$SOCK_PATH" -O exit "$ALIAS" >/dev/null 2>&1
 	sleep 1
@@ -414,11 +443,13 @@ connect() {
 # The remote command line: enter the workspace and load its .env, then run the interpreter on the
 # standard input under the remote step limit.
 remote_line() {
-	local interpreter="$1" line=""
+	local interpreter="$1" line='PATH="$HOME/.local/bin:$PATH"; export PATH; '
 	if [ -n "$WORKSPACE" ]; then
-		line="cd $(sq "$WORKSPACE") && "
+		line="${line}cd $(sq "$WORKSPACE") && "
 		if [ "$NO_ENV" = 0 ]; then
-			line="$line{ [ -f $(sq "$WORKSPACE/.env") ] || { echo 'vrl_ssh: the workspace has no .env; pass --no-env if setup has not written it yet' >&2; exit 98; }; } && set -a && . $(sq "$WORKSPACE/.env") && set +a && "
+			# .env is read as literal NAME=value lines, never run, as launch_run.sh reads it.
+			line="$line{ [ -f .env ] || { echo 'vrl_ssh: the workspace has no .env; pass --no-env if setup has not written it yet' >&2; exit 98; }; } && "
+			line="$line"'while IFS= read -r _vrl_l || [ -n "$_vrl_l" ]; do _vrl_l=${_vrl_l%"$(printf "\r")"}; case "$_vrl_l" in ""|"#"*) continue;; esac; _vrl_n=${_vrl_l%%=*}; case "$_vrl_n" in "$_vrl_l"|""|[0-9]*|*[!A-Za-z0-9_]*|_vrl_*|LD_*|DYLD_*|BASH_*|ENV|HOME|PATH|CDPATH|IFS|PS4|PROMPT_COMMAND|GLOBIGNORE|SHELLOPTS|BASHOPTS|POSIXLY_CORRECT|PYTHONSTARTUP|PYTHONHOME|PYTHONINSPECT|PERL5OPT|PERL5LIB|PERLLIB|RUBYOPT|NODE_OPTIONS|JAVA_TOOL_OPTIONS|_JAVA_OPTIONS) continue;; esac; _vrl_v=${_vrl_l#*=}; case "$_vrl_v" in \"*\") _vrl_v=${_vrl_v#\"}; _vrl_v=${_vrl_v%\"};; \'"'"'*\'"'"') _vrl_v=${_vrl_v#\'"'"'}; _vrl_v=${_vrl_v%\'"'"'};; esac; export "$_vrl_n=$_vrl_v"; done < .env && unset _vrl_l _vrl_n _vrl_v CDPATH && '
 		fi
 	fi
 	if [ "$STEP_LIMIT" = 0 ]; then

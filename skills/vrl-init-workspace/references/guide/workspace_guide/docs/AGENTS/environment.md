@@ -8,7 +8,7 @@
 | `TZ` | `Area/City` | Every machine writes times in this one time zone, the same as Notion |
 
 - Write every value as a literal: an absolute path or a plain value. Never build one from another variable (`export X=$X/...`, `HF_HOME=$XDG_CACHE_HOME/huggingface`) or from a relative path; both leave stray folders behind.
-- Load `.env` in every command you launch: `set -a; . <absolute path of the workspace>/.env; set +a`. Never rely on `.bashrc`: commands run through `tmux new-window '<cmd>'`, `ssh host '<cmd>'`, or a job scheduler may not read it.
+- Load `.env` in every command you launch: `set -a; . <absolute path of the workspace>/.env; set +a`. Never rely on `.bashrc`: commands run through tmux windows, ssh, or a job scheduler may not read it. The VRL scripts load `.env` themselves, reading each line as a literal value and skipping names that would change what runs, such as `HOME`, `PATH`, or `LD_PRELOAD`, so keep those out of it.
 - Add a variable only for a tool that ignores `XDG_CACHE_HOME`, such as `TRITON_CACHE_DIR` for Triton or `CUDA_CACHE_PATH` for the CUDA kernel cache; point it inside `.cache/`, and add it only when the user agrees.
 - Never put tokens, keys, or passwords in `.env`.
 - Keep every cache in `.cache/`: never let a tool write to its default cache folder in the home directory, such as `~/.cache`, `~/.triton`, or `~/.nv`. If `.cache/` outgrows its disk, make it a symlink to a larger disk instead of moving caches elsewhere.
