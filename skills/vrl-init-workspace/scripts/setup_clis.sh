@@ -30,6 +30,18 @@
 # Everything runs inside main(), so that bash reads the whole script before running it when the
 # script comes in on stdin.
 
+# True when the folder or one above it holds docs/AGENTS/remote.md: the local machine of a remote-mode
+# workspace.
+in_remote_workspace() {
+	local d
+	d="$(cd "$1" 2>/dev/null && pwd -P)" || return 1
+	while :; do
+		[ ! -f "$d/docs/AGENTS/remote.md" ] || return 0
+		[ "$d" != / ] && [ -n "$d" ] || return 1
+		d="$(dirname "$d")"
+	done
+}
+
 main() {
 	set -uo pipefail
 
@@ -58,7 +70,7 @@ main() {
 		esac
 	done
 	[ -n "$TOOLS" ] || { err "--only lists no tool"; return 2; }
-	if [ -z "${VRL_REMOTE:-}" ] && { [ -f docs/AGENTS/remote.md ] || [ -f "${workspace:-.}/docs/AGENTS/remote.md" ]; }; then
+	if [ -z "${VRL_REMOTE:-}" ] && { in_remote_workspace "$(pwd -P)" || { [ -n "$workspace" ] && in_remote_workspace "$workspace"; }; }; then
 		case " $TOOLS " in
 			*" uv "* | *" hf "*)
 				err "This is the local machine of a remote-mode workspace, which runs no code: install uv and hf on the remote host, through vrl_ssh.sh script, and pass --only with the others here."

@@ -158,6 +158,7 @@ RW="$TMP_ROOT/rw/it's ws"
 make_workspace() {
 	[ -d "$LW/.git" ] && return 0
 	mkdir -p "$LW/docs/AGENTS" "$LW/docs/plans" "$RW"
+	printf 'TZ=UTC\n' >"$RW/.env"
 	(
 		cd "$LW" || exit 1
 		printf '/*\n!/.gitignore\n!/AGENTS.md\n!/docs/\n!/tests/\n/docs/AGENTS/machine.md\n/docs/AGENTS/remote.md\n' >.gitignore
@@ -191,7 +192,6 @@ test_sync_copies_commits_and_prints_pins() {
 	expect_out "code=main_repo@$(git -C main_repo rev-parse --short=12 HEAD) diff=clean"
 	expect [ "$(cat "$RW/main_repo/.git/vrl-sync.branch")" = main ]
 	# The plan file passes the plan form's checks there, with the hash sync printed.
-	printf 'TZ=UTC\n' >"$RW/.env"
 	run bash "$V" script myhpc --workspace "$RW" -- launch_run.sh --plan docs/plans/2026-10-10-demo.md --run a \
 		--plan-sha256 "$(sha docs/plans/2026-10-10-demo.md)" --nohup --no-gpu --machine box --wait 6
 	expect_rc 0 && expect_out "ended with exit code 0"
@@ -256,6 +256,82 @@ test_sync_worktree_shares_its_owner_mirror() {
 	expect_rc 0 && expect grep -q two "$RW/worktrees/feat/feat.py"
 }
 
+test_sync_sees_every_run_of_the_checkout() {
+	up
+	make_workspace
+	cd "$LW" || return 1
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 0 || return 1
+	(cd main_repo && echo 'print(5)' >train.py && git commit -qam five)
+	# A run launched with an absolute --code, and a logs/ folder on another disk.
+	mv "$RW/logs" "$TMP_ROOT/scratch-logs" 2>/dev/null || mkdir -p "$TMP_ROOT/scratch-logs"
+	ln -s "$TMP_ROOT/scratch-logs" "$RW/logs"
+	run bash "$V" script myhpc --workspace "$RW" -- launch_run.sh --purpose p --log logs/abs/run.log --code "$RW/main_repo" \
+		--no-gpu --nohup --machine box -- 'sleep 30'
+	expect_rc 0 || return 1
+	expect grep -q '^# code:      main_repo (main, synced)' "$TMP_ROOT/scratch-logs/abs/run.log"
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 3 && expect_out "Runs still going use main_repo"
+	# A sync that changes nothing still prints the pin.
+	(cd main_repo && git checkout -q HEAD~1 2>/dev/null)
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 0 && expect_out "synced main_repo code=main_repo@"
+	git -C main_repo checkout -q main
+	# The run's own output cannot hide it.
+	printf '# code:      other (x) @ y (clean)\n# finished:  warmup\n' >>"$TMP_ROOT/scratch-logs/abs/run.log"
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 3 && expect_out "Runs still going"
+	pkill -f '^sleep 30$'; sleep 2
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 0
+	rm "$RW/logs" && mv "$TMP_ROOT/scratch-logs" "$RW/logs"
+	# A log outside logs/ is refused on the remote host.
+	run bash "$V" script myhpc --workspace "$RW" -- launch_run.sh --purpose p --log tmp/x.log --code main_repo --no-gpu --nohup --machine box -- 'true'
+	expect_rc 2 && expect_out "goes under logs/"
+}
+
+test_sync_recovers_and_copies_what_it_is_told() {
+	up
+	make_workspace
+	cd "$LW" || return 1
+	run bash "$V" sync myhpc --workspace "$RW" -- . main_repo; expect_rc 0 || return 1
+	# Every sync of . prints every plan's hash, even when nothing changed.
+	run bash "$V" sync myhpc --workspace "$RW" -- .; expect_rc 0 && expect_out "sha256 docs/plans/2026-10-10-demo.md"
+	# A checkout that failed half way is finished by the next sync, not refused.
+	(cd main_repo && echo 'print(6)' >train.py && git commit -qam six)
+	printf '%s\n%s\n' "$(git -C main_repo rev-parse HEAD)" "$(git -C main_repo rev-parse HEAD~1)" >"$RW/main_repo/.git/vrl-sync.pending"
+	rm -f "$RW/main_repo/train.py"
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 0 && expect [ ! -e "$RW/main_repo/.git/vrl-sync.pending" ]
+	expect grep -q 'print(6)' "$RW/main_repo/train.py"
+	# --commit copies a commit other than the one checked out here.
+	old="$(git -C main_repo rev-parse HEAD~1)"
+	echo wip >>main_repo/train.py
+	run bash "$V" sync myhpc --workspace "$RW" --commit "$old" -- main_repo
+	expect_rc 0 && expect_out "code=main_repo@$(git -C main_repo rev-parse --short=12 "$old")"
+	git -C main_repo checkout -q train.py
+	# OS clutter blocks nothing; a shallow reference repository syncs.
+	touch main_repo/.DS_Store
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 0
+	rm main_repo/.DS_Store
+	git clone -q --depth 1 "file://$LW/main_repo" ref_repos/up
+	run bash "$V" sync myhpc --workspace "$RW" -- ref_repos/up; expect_rc 0 && expect [ -f "$RW/ref_repos/up/train.py" ]
+	# A deleted worktree mirror is made again.
+	git -C main_repo worktree add -q -b wt ../worktrees/wt
+	run bash "$V" sync myhpc --workspace "$RW" -- worktrees/wt; expect_rc 0
+	rm -rf "$RW/worktrees/wt"
+	run bash "$V" sync myhpc --workspace "$RW" -- worktrees/wt; expect_rc 0 && expect [ -f "$RW/worktrees/wt/train.py" ]
+	# CDPATH changes nothing; a remote login that prints is refused with its reason.
+	CDPATH=/tmp:. run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 0
+	FAKE_SSH_BANNER="Loading modules" run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 3 && expect_out "prints to standard output"
+}
+
+test_run_reads_a_command_from_stdin() {
+	up
+	mkdir -p "$RW/tmp"
+	cat >"$TMP_ROOT/cmd.txt" <<'VRL'
+cat > tmp/plot.py <<'EOF'
+label = '$\alpha$ = it\'s "quoted"'  # `ticks` and $HOME stay
+EOF
+VRL
+	run bash "$V" run myhpc --workspace "$RW" -- - <"$TMP_ROOT/cmd.txt"
+	expect_rc 0 && expect [ "$(cat "$RW/tmp/plot.py")" = "$(sed -n 2p "$TMP_ROOT/cmd.txt")" ]
+}
+
 test_read_prints_text_under_results_only() {
 	up
 	mkdir -p "$RW/logs/r" "$RW/tmp"
@@ -274,6 +350,10 @@ three" && expect_no_out "one"
 	ln -s /etc "$RW/logs/out"
 	run bash "$V" read myhpc --workspace "$RW" -- logs/out/hosts; expect_rc 3 && expect_out "leads outside"
 	run bash "$V" read myhpc --workspace "$RW" -- logs/r/none.log; expect_rc 3 && expect_out "no such file"
+	# A long last line is cut from its start, so the newest bytes show.
+	{ printf 'old\n'; head -c 70000 /dev/zero | tr '\0' a; printf 'NEWEST\n'; } >"$RW/logs/r/long.log"
+	run bash "$V" read myhpc --workspace "$RW" --lines 1 -- logs/r/long.log
+	expect_rc 0 && expect_out "only their last 65536 follow" && expect_out "NEWEST"
 }
 
 test_fetch_copies_figures_only() {
@@ -296,6 +376,17 @@ test_fetch_copies_figures_only() {
 	run bash "$V" fetch myhpc --workspace "$RW" --max-mb 1 -- runs/x/figures/big.png; expect_rc 3 && expect_out "larger than"
 	mkdir -p "$RW/tmp/lock" && printf 'version = 1\n' >"$RW/tmp/lock/uv.lock"
 	run bash "$V" fetch myhpc --workspace "$RW" -- tmp/lock/uv.lock; expect_rc 0 && expect grep -q 'version = 1' tmp/fetched/tmp/lock/uv.lock
+	# A large SVG with UTF-8 text, and bytes that a UTF-8 Perl would mangle.
+	{ printf '<svg xmlns="http://www.w3.org/2000/svg">'; for i in $(seq 1 3000); do printf '<text>\316\261 %s</text>' "$i"; done; printf '</svg>'; } >"$RW/runs/x/figures/big.svg"
+	LC_ALL=en_US.UTF-8 run bash "$V" fetch myhpc --workspace "$RW" -- runs/x/figures/big.svg; expect_rc 0
+	printf '\377\330\377\340rest\377\331' >"$RW/runs/x/figures/d.jpg"
+	PERL_UNICODE=SDA FAKE_SSH_BANNER=hello run bash "$V" fetch myhpc --workspace "$RW" -- runs/x/figures/d.jpg
+	expect_rc 0 && expect cmp -s "$RW/runs/x/figures/d.jpg" tmp/fetched/runs/x/figures/d.jpg
+	# A symlinked folder below tmp/fetched is refused.
+	mkdir -p "$RW/runs/y/figures" && cp "$RW/runs/x/figures/a.png" "$RW/runs/y/figures/a.png"
+	mkdir -p "$TMP_ROOT/outside" tmp/fetched/runs && ln -s "$TMP_ROOT/outside" tmp/fetched/runs/y
+	run bash "$V" fetch myhpc --workspace "$RW" -- runs/y/figures/a.png; expect_rc 3 && expect [ ! -e "$TMP_ROOT/outside/figures" ]
+	rm tmp/fetched/runs/y
 	mv tmp/fetched "$TMP_ROOT/fetched-away" && ln -s "$TMP_ROOT/fetched-away" tmp/fetched
 	run bash "$V" fetch myhpc --workspace "$RW" -- runs/x/figures/a.png; expect_rc 3 && expect_out "symlink"
 	rm tmp/fetched

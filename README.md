@@ -156,7 +156,12 @@ Install the new release as above. A workspace set up by 0.1.x has older rule fil
 - Redo step 4 of "Set up a workspace" in `workspace_prompts.md`, or step 5 of "Set up a remote workspace" in `remote_prompts.md`, which fills the new rows of `docs/AGENTS/machine.md`: the tmux session with the command that starts it, and the path of the VRL scripts. A proxy the machine needs moves into `.env`.
 - Add the GPU hours row to section 5 of each finished experiment, from `gpu_hours.py` on its log folder, since the budget left now counts those rows.
 - Experiments planned before the upgrade have no plan blocks, so finish them by hand, or plan them again.
-- A remote-mode workspace no longer mounts the remote host: the code moves to your machine. Once no run is going, have the agent commit any change made on the remote host and push it, or save it as a patch, then make your launch directory the workspace repository: clone the workspace repository and the code there, add the rules, and write the local `.env` and the new `remote.md` as "Set up a remote workspace" says. Sync every checkout, then unmount the old mount and delete its folder yourself. A remote checkout that holds a change of its own refuses the first sync until the change is moved away.
+- A remote-mode workspace no longer mounts the remote host, and its code moves to your machine. Once no run is going:
+  1. Have the agent commit any change made on the remote host and push it, or save it as a patch.
+  2. Unmount the old mount yourself, and move the old launch directory aside.
+  3. In a new, empty directory, which becomes the workspace root, clone the workspace repository and the code. Replace the workspace repository's `.gitignore` with the one in step 3 of "Set up a remote workspace", which tracks `AGENTS.md` and keeps `docs/AGENTS/machine.md` and `docs/AGENTS/remote.md` out, and bring `AGENTS.md` and `docs/AGENTS/` over from the old launch directory.
+  4. Write the local `.env` and the new `remote.md` as that prompt says, and add `PYTHONPYCACHEPREFIX` and the time zone to the remote `.env`.
+  5. Sync `.` and every checkout. A remote checkout that still holds a change of its own refuses the first sync until the change is moved away; the old remote workspace repository becomes the mirror of `.` once your clone's history is synced into it.
 
 ## License
 

@@ -82,6 +82,7 @@ EOF
 main() {
 	set -uo pipefail
 	umask 077
+	unset CDPATH
 
 	local log="" purpose="" session="" nohup=0 gpus="" no_gpu=0 machine="" code="" outputs="" envname=""
 	local restart=0 resume=0 new_session=0 wait_s=3 plan="" plan_given=0 run="" plan_sha="" pin="" pin_given=0
@@ -124,9 +125,16 @@ main() {
 	done
 
 	# The local machine of a remote-mode workspace runs no code; the remote host sets VRL_REMOTE.
-	if [ -f docs/AGENTS/remote.md ] && [ -z "${VRL_REMOTE:-}" ]; then
+	if [ -z "${VRL_REMOTE:-}" ] && in_remote_workspace; then
 		err "This is the local machine of a remote-mode workspace, which runs no code: run launch_run.sh on the remote host, through vrl_ssh.sh script."
 		return 2
+	fi
+	if [ -n "$sync_prepare$sync_apply" ]; then
+		[ -n "${VRL_REMOTE:-}" ] || { err "--sync-prepare and --sync-apply run only on the remote host, through vrl_ssh.sh sync"; return 2; }
+		if [ "$plan_given$pin_given$status$log_given$code_given$outputs_given" != 000000 ] || [ -n "$run$plan_sha$session$gpus" ] || [ $# -gt 0 ]; then
+			err "--sync-prepare and --sync-apply are vrl_ssh.sh sync's own steps, and take no other form's options"
+			return 2
+		fi
 	fi
 	if [ -n "$sync_prepare" ]; then
 		sync_prepare "$sync_prepare"
@@ -198,6 +206,12 @@ main() {
 	[ -f .env ] || { err "Run this from the workspace root: there is no .env here"; return 2; }
 	local ws
 	ws="$(pwd -P)"
+	if [ -n "${VRL_REMOTE:-}" ] && [ "$plan_given" = 0 ]; then
+		case "$log" in
+			logs/*) ;;
+			*) err "On the remote host, a log goes under logs/, given relative to the workspace root, so that a sync can see the run"; return 2 ;;
+		esac
+	fi
 	if [ "$plan_given" -gt 0 ]; then
 		plan_load "$ws" "$plan" "$run" "$plan_sha" || return 3
 		cmd="$PLAN_CMD"
@@ -256,8 +270,15 @@ main() {
 	# the check and the start; a sync, for its part, waits while a launch holds a lock.
 	if [ "$code" != none ]; then
 		git -C "$code" rev-parse --git-dir >/dev/null 2>&1 || { err "Not a git checkout: $code"; return 2; }
-		local sync_lock
-		sync_lock="$(git_safe "$code" rev-parse --absolute-git-dir 2>/dev/null)/vrl-sync.lock"
+		local top sync_lock
+		top="$(cd "$code" 2>/dev/null && cd "$(git_safe . rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null && pwd -P)" ||
+			{ err "Not a git checkout: $code"; return 2; }
+		case "$top" in
+			"$ws") code=. ;;
+			"$ws"/*) code="${top#"$ws"/}" ;;
+			*) [ -z "${VRL_REMOTE:-}" ] || { err "The checkout must be in the remote workspace: $code"; return 3; } ;;
+		esac
+		sync_lock="$(git_dir_of "$code")/vrl-sync.lock"
 		if [ -d "$sync_lock" ] && [ -z "$(find "$sync_lock" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
 			err "A sync of $code is in progress: launch again in a minute."
 			return 3
@@ -267,7 +288,11 @@ main() {
 		local now_pin
 		now_pin="$(print_pin "$code")" || return 1
 		if [ "$now_pin" != "code=$code@$PLAN_COMMIT diff=$PLAN_DIFF" ] && ! pin_matches "$now_pin" "$code" "$PLAN_COMMIT" "$PLAN_DIFF"; then
-			err "The checkout $code changed since the plan was approved: it is now $now_pin; git -C $code status shows what changed, which may be a file a run wrote. A change to the code or a config needs a new approval."
+			if [ -n "${VRL_REMOTE:-}" ]; then
+				err "The mirror of $code is now $now_pin, not the commit the plan pins: a later sync moved it, or a run wrote files into it. Sync the plan's commit back with vrl_ssh.sh sync --commit, which needs no new approval while the plan is unchanged; a change to the code or a config needs one."
+			else
+				err "The checkout $code changed since the plan was approved: it is now $now_pin; git -C $code status shows what changed, which may be a file a run wrote. A change to the code or a config needs a new approval."
+			fi
 			return 3
 		fi
 	fi
@@ -329,7 +354,7 @@ main() {
 		commit="$(git_safe "$code" rev-parse --short=12 HEAD 2>/dev/null)" || { err "Not a git checkout: $code"; return 2; }
 		branch="$(git_safe "$code" rev-parse --abbrev-ref HEAD 2>/dev/null)"
 		local record
-		record="$(git_safe "$code" rev-parse --absolute-git-dir 2>/dev/null)/vrl-sync.branch"
+		record="$(git_dir_of "$code")/vrl-sync.branch"
 		if [ "$branch" = HEAD ] && [ -f "$record" ]; then branch="$(head -n 1 "$record"), synced"; fi
 		checkout_dirty "$code"
 		case $? in
@@ -522,6 +547,23 @@ git_safe() {
 	git -C "$dir" -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.quotepath=off -c color.ui=false "$@"
 }
 
+# The absolute git folder of a checkout.
+git_dir_of() {
+	(cd "$1" 2>/dev/null && cd "$(git_safe . rev-parse --git-dir 2>/dev/null)" 2>/dev/null && pwd -P)
+}
+
+# True when this folder or one above it holds docs/AGENTS/remote.md: the local machine of a remote-mode
+# workspace.
+in_remote_workspace() {
+	local d
+	d="$(pwd -P)"
+	while :; do
+		[ ! -f "$d/docs/AGENTS/remote.md" ] || return 0
+		[ "$d" != / ] && [ -n "$d" ] || return 1
+		d="$(dirname "$d")"
+	done
+}
+
 sha256_of() {
 	if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
 	elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
@@ -694,17 +736,21 @@ plan_load() {
 	fi
 }
 
-# The state of a log's last run: "open<TAB>id<TAB>pid", "finished<code><TAB>id", or "none". While a run
-# with a run-id is open, only its own end marker counts.
+# The state of a log's last run: "open<TAB>id<TAB>pid<TAB>checkout", "finished<code><TAB>id", or "none".
+# While a run with a run-id is open, only its own end marker counts.
 log_state() {
 	awk -v OFS='\t' '
 		open && oid != "" { if ($0 == "# ---------- end " oid " ----------") { open = 0; closing = 1 }; next }
-		/^# run-id:/ { id = $3 } /^# session:/ { s = $0 }
-		/^# ---------- stdout/ { open = 1; oid = id; os = s; id = ""; fin = ""; next }
+		/^# run-id:/ { id = $3 } /^# session:/ { s = $0 } /^# code:/ { c = $0 }
+		/^# ---------- stdout/ { open = 1; oid = id; os = s; oc = c; id = ""; c = ""; fin = ""; next }
 		/^# ---------- end/ && open { open = 0; closing = 1; next }
 		closing && /^# finished:/ { fin = $0; closing = 0 }
 		END {
-			if (open) { pid = ""; if (match(os, /PID [0-9]+/)) pid = substr(os, RSTART + 4, RLENGTH - 4); print "open", oid, pid }
+			if (open) {
+				pid = ""; if (match(os, /PID [0-9]+/)) pid = substr(os, RSTART + 4, RLENGTH - 4)
+				sub(/^# code: */, "", oc); sub(/ .*/, "", oc)
+				print "open", oid, pid, oc
+			}
 			else if (fin != "") { code = fin; sub(/.*exit code /, "", code); sub(/[^0-9a-z].*/, "", code); print "finished" code, oid }
 			else print "none"
 		}' "$1"
@@ -812,9 +858,26 @@ save_diff() {
 	printf '%s' "$file"
 }
 
-# The run names of a plan, from the run=<run> words of its fence lines.
+# The run names of a plan: the run=<run> words of the fences that open a block, as plan_load reads them.
 plan_runs() {
-	tr -d '\r' <"$1" | awk '/^ ? ? ?(```|~~~)/ { for (i = 1; i <= NF; i++) if ($i ~ /^run=/) print substr($i, 5) }' | awk '!seen[$0]++'
+	tr -d '\r' <"$1" | awk '
+		function fence(line,   m) {
+			if (match(line, /^ ? ? ?(````*|~~~~*)/)) { m = substr(line, RSTART, RLENGTH); sub(/^ */, "", m); return m }
+			return ""
+		}
+		{
+			f = fence($0)
+			if (inside) {
+				t = $0; sub(/^ ? ? ?/, "", t); sub(/[ \t]*$/, "", t)
+				if (f != "" && length(t) >= len && t == substr(f, 1, length(t)) && substr(f, 1, 1) == ch) inside = 0
+				next
+			}
+			if (f != "") {
+				inside = 1; ch = substr(f, 1, 1); len = length(f)
+				n = split($0, words, /[ \t]+/)
+				for (i = 1; i <= n; i++) if (words[i] ~ /^run=/ && !seen[words[i]]++) print substr(words[i], 5)
+			}
+		}'
 }
 
 # The state of each run of a plan, or of one, and the end of its log; it changes nothing.
@@ -829,7 +892,9 @@ plan_status() {
 	if [ -n "$one" ]; then runs="$one"; else runs="$(plan_runs "$plan")"; fi
 	[ -n "$runs" ] || { err "The plan has no block with run=<run>: $plan"; return 2; }
 	for r in $runs; do
-		case "$r" in [!A-Za-z0-9]* | *[!A-Za-z0-9_.-]*) err "Not a run name: $r"; return 2 ;; esac
+		case "$r" in [!A-Za-z0-9]* | *[!A-Za-z0-9_.-]*) printf 'note: skipped run=%s, which is not a run name
+
+' "$r"; continue ;; esac
 		log="logs/$base/$r.log"
 		printf 'run       %s\nlog       %s\n' "$r" "$log"
 		if [ ! -f "$log" ] || [ -L "$log" ]; then
@@ -902,17 +967,17 @@ sync_prepare() {
 	mkdir -p "$dir" && git init -q --template= "$dir" || { err "Could not create the mirror $dir"; return 4; }
 }
 
-# The logs of runs that use the checkout, by their last header's code line, and are still going or
-# cannot be told dead.
+# The logs of runs that use the checkout, by the code line of their open run's header, and are still
+# going or cannot be told dead. A log that ends with its last run's own footer is skipped unread.
 live_runs_of() {
-	local want="$1" f state id pid word
+	local want="$1" f id state pid
 	[ -d logs ] || return 0
-	find logs -name '*.log' -type f 2>/dev/null | while IFS= read -r f; do
-		[ "$(tail -n 1 "$f" 2>/dev/null | cut -c1-11)" != "# finished:" ] || continue
+	find -H logs -name '*.log' -type f 2>/dev/null | while IFS= read -r f; do
+		id="$(grep '^# run-id:' "$f" | tail -n 1 | sed 's/^# run-id: *//')"
+		if [ -n "$id" ] && [ "$(tail -n 2 "$f" 2>/dev/null | head -n 1)" = "# ---------- end $id ----------" ]; then continue; fi
 		state="$(log_state "$f")"
 		case "$state" in open*) ;; *) continue ;; esac
-		word="$(grep '^# code:' "$f" | tail -n 1 | sed 's/^# code: *//; s/ .*//')"
-		[ "$word" = "$want" ] || continue
+		[ "$(printf '%s' "$state" | cut -f4)" = "$want" ] || continue
 		id="$(printf '%s' "$state" | cut -f2)"
 		pid="$(printf '%s' "$state" | cut -f3)"
 		if run_alive "$f" "$pid" "$id"; then printf '%s\n' "$f"; fi
@@ -921,9 +986,10 @@ live_runs_of() {
 
 # vrl_ssh.sh sync, on the remote host: check out the commit the sync has just pushed in the mirror of
 # a checkout, or add the mirror of a worktree. It refuses, with exit code 3 and nothing changed, while
-# a run or a launch uses the checkout, or while the mirror holds changes that no sync made.
+# a run or a launch uses the checkout, or while the mirror holds changes that no sync made. A checkout
+# that failed half way is marked pending, so that the next sync finishes it.
 sync_apply() {
-	local dir="$1" commit="$2" branch="$3" owner="$4" repo gd old="" busy there plans f
+	local dir="$1" commit="$2" branch="$3" owner="$4" repo gd old="" busy there plans f pending prev
 	umask 022
 	checkout_form "$dir" || { err "Not a checkout a sync may name: $dir"; return 2; }
 	[ -z "$owner" ] || checkout_form "$owner" || { err "Not a checkout a sync may name: $owner"; return 2; }
@@ -941,69 +1007,82 @@ sync_apply() {
 		fi
 		[ ! -d "$dir" ] || rmdir "$dir"
 		mkdir -p "$(dirname "$dir")" || return 4
+		# The registration of a worktree folder that was deleted would block the add.
+		git_safe "$owner" worktree prune 2>/dev/null
 		git_safe "$owner" -c core.autocrlf=false -c advice.detachedHead=false worktree add -q --detach \
 			"$(cd "$(dirname "$dir")" && pwd -P)/$(basename "$dir")" "$commit" || { err "Could not add the worktree $dir"; return 4; }
 	else
 		is_checkout_top "$dir" || { err "$dir is no mirror yet"; return 4; }
-		if [ -n "$owner" ] && [ "$(cd "$dir" && cd "$(git_safe . rev-parse --git-common-dir)" && pwd -P)" != "$(cd "$owner" && cd "$(git_safe . rev-parse --git-common-dir)" && pwd -P)" ]; then
+		if [ -n "$owner" ] && [ "$(git_dir_of "$dir")" != "$(git_dir_of "$owner")/worktrees/$(basename "$(git_dir_of "$dir")")" ]; then
 			err "$dir is no worktree of $owner: move it away, then sync again."
 			return 3
 		fi
-		gd="$(git_safe "$dir" rev-parse --absolute-git-dir)" || return 4
-		SYNC_LOCK="$gd/vrl-sync.lock"
-		if ! mkdir "$SYNC_LOCK" 2>/dev/null; then
-			if [ -n "$(find "$SYNC_LOCK" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then rmdir "$SYNC_LOCK" 2>/dev/null; fi
-			mkdir "$SYNC_LOCK" 2>/dev/null || { err "Another sync of $dir is in progress: sync again in a minute."; return 3; }
-		fi
-		trap 'rmdir "$SYNC_LOCK" 2>/dev/null' EXIT
-		busy="$(live_runs_of "$dir")"
-		if [ -n "$busy" ]; then
-			err "Runs still going use $dir, and its code must not change under them: sync it once they end, or put the change in a worktree of its own. Their logs:"
-			printf '%s\n' "$busy" | head -n 20 >&2
-			return 3
-		fi
-		if [ -d logs ] && [ -n "$(find logs -name '*.log.lock' -type d -mmin -2 2>/dev/null | head -n 1)" ]; then
-			err "A launch is in progress: sync again in a minute."
-			return 3
-		fi
-		if old="$(git_safe "$dir" rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null)"; then
-			checkout_dirty "$dir"
-			case $? in
-				1) ;;
-				2) return 3 ;;
-				*)
-					err "The mirror $dir holds changes that no sync made, such as files a run wrote there or an edit on this host: show them to the user, who decides what to keep, then sync again."
-					git_safe "$dir" status --short --untracked-files=all 2>/dev/null | head -n 40 >&2
-					return 3
-					;;
-			esac
+		gd="$(git_dir_of "$dir")" && [ -d "$gd" ] || { err "Could not find the git folder of $dir"; return 4; }
+		old="$(git_safe "$dir" rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null)"
+		pending="$gd/vrl-sync.pending"
+		prev=""
+		[ ! -f "$pending" ] || prev="$(sed -n 2p "$pending")"
+		if [ "$old" = "$commit" ] && [ ! -f "$pending" ] && { checkout_dirty "$dir"; [ $? = 1 ]; }; then
+			# Already there: nothing changes, so a run that uses the checkout is no reason to refuse.
+			:
 		else
-			old=""
-			there="$(git_safe "$dir" ls-tree -r -z --name-only "$commit" | (cd "$dir" && while IFS= read -r -d '' f; do
-				if [ -e "$f" ] || [ -L "$f" ]; then printf '%s\n' "$f"; fi
-			done) | head -n 20)"
-			if [ -n "$there" ]; then
-				err "The folder $dir already holds files of the commit, which a first sync would overwrite: move them away, then sync again."
-				printf '%s\n' "$there" >&2
+			SYNC_LOCK="$gd/vrl-sync.lock"
+			if ! mkdir "$SYNC_LOCK" 2>/dev/null; then
+				if [ -n "$(find "$SYNC_LOCK" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then rmdir "$SYNC_LOCK" 2>/dev/null; fi
+				mkdir "$SYNC_LOCK" 2>/dev/null || { err "Another sync of $dir is in progress: sync again in a minute."; return 3; }
+			fi
+			trap 'rmdir "$SYNC_LOCK" 2>/dev/null' EXIT
+			# Launch locks first, then runs: a launch that took its lock after this check sees the sync lock,
+			# and one that released it before has written its header, which the scan below finds.
+			if [ -d logs ] && [ -n "$(find -H logs -name '*.log.lock' -type d -mmin -2 2>/dev/null | head -n 1)" ]; then
+				err "A launch is in progress: sync again in a minute."
 				return 3
 			fi
+			busy="$(live_runs_of "$dir")"
+			if [ -n "$busy" ]; then
+				err "Runs still going use $dir, and its code must not change under them: sync it once they end, or put the change in a worktree of its own. Their logs:"
+				printf '%s\n' "$busy" | head -n 20 >&2
+				return 3
+			fi
+			if [ -f "$pending" ]; then
+				# An earlier sync failed half way: finish it, from where it started.
+				old="$prev"
+			elif [ -n "$old" ]; then
+				checkout_dirty "$dir"
+				case $? in
+					1) ;;
+					2) return 3 ;;
+					*)
+						err "The mirror $dir holds changes that no sync made, such as files a run wrote there or an edit on this host: show them to the user, who decides what to keep, then sync again."
+						git_safe "$dir" status --short --untracked-files=all 2>/dev/null | head -n 40 >&2
+						return 3
+						;;
+				esac
+			else
+				there="$(git_safe "$dir" ls-tree -r -z --name-only "$commit" | (cd "$dir" && while IFS= read -r -d '' f; do
+					if [ -e "$f" ] || [ -L "$f" ]; then printf '%s\n' "$f"; fi
+				done) | head -n 20)"
+				if [ -n "$there" ]; then
+					err "The folder $dir already holds files of the commit, which a first sync would overwrite: move them away, then sync again."
+					printf '%s\n' "$there" >&2
+					return 3
+				fi
+			fi
+			printf '%s\n%s\n' "$commit" "$old" >"$pending" || return 4
+			git_safe "$dir" -c core.autocrlf=false -c advice.detachedHead=false checkout -q -f --detach "$commit" ||
+				{ err "Could not check out $commit in $dir: fix the cause, such as a full disk, then sync again"; return 4; }
 		fi
-		git_safe "$dir" -c core.autocrlf=false -c advice.detachedHead=false checkout -q -f --detach "$commit" ||
-			{ err "Could not check out $commit in $dir"; return 4; }
 	fi
 
 	[ "$(git_safe "$dir" rev-parse HEAD 2>/dev/null)" = "$commit" ] || { err "The mirror $dir is not at $commit after the checkout"; return 4; }
 	checkout_dirty "$dir"
-	[ $? = 1 ] || { err "The mirror $dir differs from its commit after the checkout"; return 4; }
-	gd="$(git_safe "$dir" rev-parse --absolute-git-dir)" || return 4
+	[ $? = 1 ] || { err "The mirror $dir differs from its commit after the checkout: fix the cause, then sync again"; return 4; }
+	gd="$(git_dir_of "$dir")" && [ -d "$gd" ] || return 4
+	rm -f "$gd/vrl-sync.pending"
 	printf '%s\n' "$branch" >"$gd/vrl-sync.branch"
 	printf 'synced %s code=%s@%s diff=clean\n' "$dir" "$dir" "$(git_safe "$dir" rev-parse --short=12 HEAD)"
 	if [ "$dir" = . ]; then
-		if [ -n "$old" ]; then
-			plans="$(git_safe . diff --name-only --no-renames --diff-filter=AM "$old" "$commit" -- docs/plans)"
-		else
-			plans="$(git_safe . ls-tree -r --name-only "$commit" -- docs/plans)"
-		fi
+		plans="$(git_safe . ls-tree -r --name-only "$commit" -- docs/plans)"
 		printf '%s\n' "$plans" | while IFS= read -r f; do
 			case "$f" in docs/plans/*.md) [ ! -f "$f" ] || printf 'sha256 %s %s\n' "$f" "$(sha256_of "$f")" ;; esac
 		done

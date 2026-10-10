@@ -16,10 +16,19 @@
 |---|---|
 | The workspace repository: `AGENTS.md`, `.gitignore`, `docs/`, and `tests/`. The code folder, `worktrees/`, and `ref_repos/`, as git checkouts. `.env`, holding only `TZ`. `logs/`, for the night watch's logs only. `tmp/`, for drafts and fetched files. Harness config such as `.claude/` | A mirror of the workspace repository and of each checkout, at the same paths. `.env`, with every variable the tools need. `.cache/`, `data/`, `logs/`, `runs/`, `tmp/`, and the environments |
 
-- A relative path names the same file on both sides: `main_repo/train.py` is edited here and runs there, while `logs/…` and `runs/…` exist only there. Write absolute remote paths, `<remote workspace>/<path>`, in configs, launch commands, and Notion.
+- A relative path names the same file on both sides: `main_repo/train.py` is edited here and runs there, while `logs/…` and `runs/…` exist only there. Write absolute remote paths, `<remote workspace>/<path>`, in configs and Notion, but give the VRL scripts paths relative to the workspace root, such as `--code main_repo` and `--log logs/…`.
 - Edit files only here. A mirror holds exactly the last commit synced to it, checked out with no branch: never edit it, commit in it, or run git commands that change it.
 - Results stay on the remote host. Read them there, as "Connection" shows. Bring nothing back but a figure to upload or a lock file to commit, with `vrl_ssh.sh fetch`, which copies it into `tmp/fetched/`; delete the copy once you have used it.
-- Write plotting and other analysis scripts on the remote host, next to the figures they draw or under `tmp/`, through `vrl_ssh.sh run`, as in `cat > runs/<…>/figures/<name>.py <<'EOF'`. They are the only files written there by hand.
+- Write plotting and other analysis scripts on the remote host, next to the figures they draw or under `tmp/`. They are the only files written there by hand. Send each with `vrl_ssh.sh run <alias> --workspace <remote workspace> -- -`, which reads the command from standard input, so that its quotes and `$` signs arrive unchanged:
+
+  ```
+  vrl_ssh.sh run <alias> --workspace <remote workspace> -- - <<'VRL'
+  cat > runs/<…>/figures/<name>.py <<'EOF'
+  <the script>
+  EOF
+  VRL
+  ```
+
 - The machine profile and this file describe one machine and stay out of the workspace repository, so no sync copies them.
 
 ## Where commands run
@@ -28,7 +37,7 @@
 |---|---|
 | Reading and editing files; git in the local repositories; `vrl_ssh.sh` and `check_update.sh`; `ntn` or `lark-cli`; `gh`; web requests; text tools such as `grep`, `sed`, or `jq` | Everything that runs code: Python, installs, environments, tests, linters, builds, smoke runs, training, evaluation, metrics, plotting, downloads, `hf`, and the VRL scripts `launch_run.sh`, `resources.sh`, and `gpu_hours.py` |
 
-- Run no code on the local machine, not even for a quick check: no `python`, `pip`, `uv`, `conda`, `pytest`, linter, type checker, notebook, `make`, or script of a checkout, and create no environment or lock file here. To check code, commit it, sync it, and check it on the remote host. `launch_run.sh`, `resources.sh`, and `gpu_hours.py` refuse to run here.
+- Run no code on the local machine, not even for a quick check: no `python`, `pip`, `uv`, `conda`, `pytest`, linter, type checker, notebook, `make`, or script of a checkout, and create no environment or lock file here. To check code, commit it, sync it, and check it on the remote host. Read JSON, such as a CLI's reply, with `jq` or the CLI's own `--jq`, never with Python. `launch_run.sh`, `resources.sh`, and `gpu_hours.py` refuse to run here.
 - Install no git hook here, such as with `pre-commit install`: a hook runs code at every commit, and remote mode commits before every sync.
 - If the remote host is unreachable, and the steps under "Connection" do not bring it back, stop and report. Never fall back to the local machine.
 
@@ -38,9 +47,11 @@ Code reaches the remote host only as commits, through `vrl_ssh.sh sync`.
 
 - Before a remote command uses changed code, a changed plan, or a changed test, commit the change, as the git rules allow, and sync each checkout it touches, with `.` for the workspace repository. Under the manual commit level, ask the user to commit, or to let you commit, before each sync. Name a worktree's own checkout, such as the code folder, before the worktree, in the same call or an earlier one.
 - The sync prints each checkout's pin, `code=<checkout>@<commit> diff=clean`: the pin to write into a plan block. For `.`, it also prints `sha256 <plan file> <hash>` for each plan file that changed: the hash to record at approval. Take pins and plan hashes only from these lines.
-- A mirror holds one commit at a time, and a sync refuses to change a mirror while a run that uses it is still going. Give each experiment whose code differs from that of a running or waiting experiment a worktree of its own.
-- A sync also refuses, and changes nothing, when the mirror holds changes no sync made, such as files a run wrote into its checkout, or an edit made on the remote host. Show the user what it lists; never delete, move, or check out files in a mirror unless they ask. A run writes only to `$VRL_OUTPUTS`, `logs/`, or `tmp/`; Python caches go to the `PYTHONPYCACHEPREFIX` that `.env` sets, or are ignored in `.gitignore`.
-- A free-form launch whose command uses a checkout passes `--code <checkout>`, never `none`, so that a sync can tell the checkout is in use.
+- A mirror holds one commit at a time, and a sync refuses to change a mirror while a run that uses it is still going; a sync that changes nothing still prints the pin. Give each experiment whose code differs from that of a running or waiting experiment a worktree of its own, with the user's consent, and before you sync a checkout, check that no approved experiment still waits to launch a run pinned to the commit its mirror holds.
+- If a sync moved a mirror off the commit that a waiting run is pinned to, the launch refuses that run. Copy the pinned commit back with `vrl_ssh.sh sync … --commit <commit> -- <checkout>`: this needs no new approval while the plan and its pin are unchanged.
+- A sync also refuses, and changes nothing, when the mirror holds changes no sync made, such as files a run wrote into its checkout, or an edit made on the remote host. Show the user what it lists; never delete, move, or check out files in a mirror unless they ask, and once they do, remove what they approve with `vrl_ssh.sh run`. A run writes only to `$VRL_OUTPUTS`, `logs/`, or `tmp/`; Python caches go to the `PYTHONPYCACHEPREFIX` that `.env` sets, or are ignored in `.gitignore`.
+- A free-form launch whose command uses a checkout passes `--code <checkout>`, never `none`, and its log goes under `logs/`, so that a sync can tell the checkout is in use. A run protects only the checkout its header names: sync another checkout it uses, such as a reference repository on its path, only while no such run is going.
+- Sync copies no submodule and no Git LFS file, and refuses a checkout that has either. Tell the user, who decides, for example, to commit a submodule's files on a local branch, or to download large files on the remote host under `data/`.
 - Build environments on the remote host without changing a tracked file, such as with `uv sync --locked`. A lock file changes on the remote host only, in a copy of the project's files under `tmp/`: fetch the new lock file, show the user the change, then commit it here and sync.
 - Run the first sync of a large repository with `--limit 0`, as a background call.
 
@@ -67,7 +78,7 @@ One SSH master carries the whole session: every command and every copy. Reach th
   - If the line is there but the tool still lists the call as running, go on, and stop that call, such as with `TaskStop` in Claude Code.
 - Read an exit code by its source. For `run` and `script`, it is the remote command's own unless the line above `__EXIT` starts with `vrl_ssh:`; the codes below are `vrl_ssh.sh`'s own.
   - 3 from `connect`: the login needs a password, a passphrase, or a second factor. Ask the user to run the command it prints in their own terminal, and wait.
-  - 3 from `sync`, `read`, or `fetch`: refused, with the reason, and nothing changed. Act on the reason; never work around it.
+  - 3 from `sync`, `read`, or `fetch`: refused, with the reason, and nothing changed for that path; the paths before it in the same call are done. Act on the reason; never work around it.
   - 4 from `sync` or `fetch`: a copy or a remote step failed. Try again once the cause is fixed.
   - 5: the host key could not be verified, new or changed. Stop and report.
   - 6 or 7: no master is up, or it hangs. Run `connect` once; if that fails, stop and report.

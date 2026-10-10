@@ -18,7 +18,9 @@ Actions:
             second factor, it prints the command for the user to run in their own terminal.
   run       Run one shell command in the remote workspace, with its .env loaded. The command is the one
             string after `--`, sent as it is on the standard input of a remote bash, so it needs no
-            quoting of its own and may span several lines; it gets no input itself. It runs any
+            quoting of its own and may span several lines; it gets no input itself. Give `-` in its
+            place to read it from standard input, as from a quoted heredoc, so that a script written
+            on the remote host, quotes and $ signs included, reaches it unchanged. It runs any
             command: never allow it without a prompt.
   script    Run one of the scripts next to this one on the remote host (launch_run.sh, resources.sh,
             gpu_hours.py, setup_clis.sh), with the arguments after its name. With --workspace, it runs
@@ -32,11 +34,14 @@ Actions:
             must have no change, staged or not, and no untracked file that is not ignored. Each
             mirror then holds that commit with no branch, and the sync prints its pin,
             `synced <path> code=<path>@<commit> diff=clean`, and for `.` the line
-            `sha256 <plan> <hash>` for each plan file that changed. It refuses, changing nothing,
-            while a run that is still going or a launch uses the checkout, while the mirror holds
-            changes no sync made, and for submodules or Git LFS files. Run it from the workspace root.
+            `sha256 <plan> <hash>` for each plan file. It refuses a checkout, changing nothing for it,
+            while a run that is still going or a launch uses it, while its mirror holds changes no
+            sync made, and for submodules, Git LFS files, or a remote login that prints to standard
+            output; the paths before it in the same call are synced already. With --commit, it
+            copies that commit of the one checkout named, whatever is checked out here, such as a
+            plan's commit after a later sync moved the mirror. Run it from the workspace root.
   read      Print the last lines of a text file in the remote workspace, under logs/, runs/, or tmp/,
-            or list a folder there. It changes nothing.
+            at most their last 64 KB, or list a folder there. It changes nothing.
   fetch     Copy up to 10 files from the remote workspace to tmp/fetched/<path> here, readable by you
             only: figures (.png, .jpg, .jpeg, .svg, .pdf) under runs/ or tmp/, or a uv.lock under tmp/.
             Run it from the workspace root.
@@ -50,6 +55,7 @@ Options:
   --no-env         With --workspace: do not load its .env, as before setup has written it.
   --lines N        read: how many lines from the end of the file (default 100, at most 2000).
   --max-mb N       fetch: the largest file to copy, in MB (default 20).
+  --commit HASH    sync: the commit to copy, in place of what is checked out here.
 
 The alias must be a Host entry of ~/.ssh/config; when docs/AGENTS/remote.md exists here, it must be the
 alias of the line that names both `ssh <alias>` and `Host <alias>`. No client logs in by itself: every
@@ -60,7 +66,8 @@ is the remote command's own, unless the line above it starts with `vrl_ssh:`. Ex
   1    the remote host, or the master, does not answer: run connect, or stop and report
   2    bad arguments, or a folder or alias that the rules do not allow
   3    connect: the login needs the user, who runs the printed command in their own terminal;
-       sync, read, fetch: refused, with the reason, and nothing changed
+       sync, read, fetch: refused, with the reason; nothing changed for that path, but the paths
+       before it in the same call are done
   4    sync, fetch: the copy or a remote step failed; sync again once the cause is fixed
   5    the host key could not be verified: stop and report; never turn off host-key checking
   6    no master is up: run connect first
@@ -79,6 +86,8 @@ EOF
 
 main() {
 	set -uo pipefail
+	# With CDPATH set, cd prints the folder it found, which would garble every $(cd ... && pwd -P).
+	unset CDPATH
 	TMP_FILES=() CUR_PID="" CUR_WD="" ACTION="" LIMIT=0 DEADLINE=0
 	# The exit marker goes to fd 3, the call's own output, even while a step's output is redirected.
 	exec 3>&1
@@ -99,13 +108,14 @@ main() {
 	esac
 	shift
 
-	WORKSPACE="" STEP_LIMIT="" NO_ENV=0 LINES_WANTED=100 MAX_MB=20
+	WORKSPACE="" STEP_LIMIT="" NO_ENV=0 LINES_WANTED=100 MAX_MB=20 SYNC_COMMIT=""
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--workspace) WORKSPACE="${2:-}"; shift ;;
 			--limit) LIMIT="${2:-}"; LIMIT_GIVEN=1; shift ;;
 			--lines) LINES_WANTED="${2:-}"; shift ;;
 			--max-mb) MAX_MB="${2:-}"; shift ;;
+			--commit) SYNC_COMMIT="${2:-}"; shift ;;
 			--step-limit) STEP_LIMIT="${2:-}"; shift ;;
 			--no-env) NO_ENV=1 ;;
 			--) shift; break ;;
@@ -164,8 +174,9 @@ main() {
 		connect) connect ;;
 		run)
 			[ -n "$WORKSPACE" ] || { err "run needs --workspace"; return 2; }
-			[ $# -eq 1 ] || { err "Give the command as one quoted string after --"; return 2; }
+			[ $# -eq 1 ] || { err "Give the command as one quoted string after --, or - to read it from standard input"; return 2; }
 			need_master || return
+			if [ "$1" = - ]; then set -- "$(cat)"; fi
 			run_command "$1"
 			;;
 		script)
@@ -456,7 +467,7 @@ connect() {
 # The remote command line: enter the workspace and load its .env, then run the interpreter on the
 # standard input under the remote step limit.
 remote_line() {
-	local interpreter="$1" line='PATH="$HOME/.local/bin:$PATH"; VRL_REMOTE=1; export PATH VRL_REMOTE; '
+	local interpreter="$1" line='unset CDPATH; PATH="$HOME/.local/bin:$PATH"; VRL_REMOTE=1; export PATH VRL_REMOTE; '
 	if [ -n "$WORKSPACE" ]; then
 		line="${line}cd $(sq "$WORKSPACE") && "
 		if [ "$NO_ENV" = 0 ]; then
@@ -538,8 +549,12 @@ lgit() {
 }
 
 sync_paths() {
-	local p rc
+	local p rc quiet
 	[ -n "$WORKSPACE" ] || { err "sync needs --workspace"; return 2; }
+	if [ -n "$SYNC_COMMIT" ]; then
+		[ $# -eq 1 ] || { err "--commit goes with one checkout"; return 2; }
+		case "$SYNC_COMMIT" in *[!0-9a-fA-F]*) err "--commit takes a commit hash"; return 2 ;; esac
+	fi
 	case "$WORKSPACE" in *:*) err "sync needs a remote workspace path without a colon"; return 2 ;; esac
 	[ $# -ge 1 ] || { err "Give the checkouts to sync after --, such as . or main_repo"; return 2; }
 	[ -d docs/AGENTS ] || { err "Run sync from the workspace root, the folder that holds docs/AGENTS/"; return 2; }
@@ -547,6 +562,15 @@ sync_paths() {
 		checkout_form "$p" || { err "Not a checkout sync may name: $p (., a folder at the workspace root, worktrees/<name>, or ref_repos/<name>)"; return 2; }
 	done
 	need_master || return
+	# git's copy of commits needs a remote login that prints nothing to standard output.
+	new_tmp || return 1
+	quiet="$NEW_TMP"
+	with_limit /dev/null "${SSH[@]}" -n "$ALIAS" true >"$quiet" 2>/dev/null || { rc=$?; sync_rc "$rc" "checking the remote login"; return; }
+	if [ -s "$quiet" ]; then
+		err "The remote login prints to standard output even for a command, which breaks git's copy of commits: ask the user to quiet their shell startup files on the remote host for non-interactive logins. It printed:"
+		head -c 300 "$quiet" >&2
+		return 3
+	fi
 	# Sync never reads the remote .env: it needs none, and runs before setup writes it.
 	NO_ENV=1
 	for p in "$@"; do
@@ -563,18 +587,26 @@ sync_one() {
 	here="$(pwd -P)"
 	top="$(lgit "$p" rev-parse --show-toplevel 2>/dev/null)" && [ "$(cd "$top" && pwd -P)" = "$(cd "$p" && pwd -P)" ] ||
 		{ err "$p is not the top of a git checkout"; return 3; }
-	commit="$(lgit "$p" rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null)" || { err "$p has no commit yet"; return 3; }
-	dirty="$(lgit "$p" status --porcelain --untracked-files=normal 2>/dev/null)" || { err "git status failed in $p"; return 3; }
+	if [ -n "$SYNC_COMMIT" ]; then
+		commit="$(lgit "$p" rev-parse -q --verify "$SYNC_COMMIT^{commit}" 2>/dev/null)" || { err "$p has no commit $SYNC_COMMIT"; return 3; }
+		dirty=""
+	else
+		commit="$(lgit "$p" rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null)" || { err "$p has no commit yet"; return 3; }
+		dirty="$(lgit "$p" status --porcelain --untracked-files=all 2>/dev/null)" || { err "git status failed in $p"; return 3; }
+		# Files the OS writes by itself, such as Finder's .DS_Store, are never copied and block nothing.
+		dirty="$(printf '%s
+' "$dirty" | grep -Ev '^\?\? (.*/)?(\.DS_Store|\._[^/]*|Thumbs\.db|desktop\.ini)$')"
+	fi
 	if [ -n "$dirty" ]; then
 		err "$p has changes that are not committed, and only commits are copied: commit them first, as the git rules allow, then sync again."
 		printf '%s\n' "$dirty" | head -n 40 >&2
 		return 3
 	fi
-	if lgit "$p" ls-files -s | awk '$1 == "160000" { n++ } END { exit !n }'; then
-		err "$p has submodules, which sync does not copy"
+	if lgit "$p" ls-tree -r "$commit" | awk '$2 == "commit" { n++ } END { exit !n }'; then
+		err "$p has submodules, which sync does not copy: tell the user"
 		return 3
 	fi
-	if lgit "$p" ls-files -z | lgit "$p" check-attr --stdin -z filter | tr '\0' '\n' | awk 'NR % 3 == 0 && $0 == "lfs" { n++ } END { exit !n }'; then
+	if lgit "$p" ls-tree -r -z --name-only "$commit" | lgit "$p" check-attr --stdin -z filter | tr '\0' '\n' | awk 'NR % 3 == 0 && $0 == "lfs" { n++ } END { exit !n }'; then
 		err "$p has Git LFS files, which sync does not copy: keep large files under data/ on the remote host"
 		return 3
 	fi
@@ -595,7 +627,7 @@ sync_one() {
 		checkout_form "$owner" || { err "$p is a worktree of $owner, which sync cannot name"; return 3; }
 	fi
 	repo="${owner:-$p}"
-	branch="$(lgit "$p" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+	if [ -n "$SYNC_COMMIT" ]; then branch="HEAD"; else branch="$(lgit "$p" rev-parse --abbrev-ref HEAD 2>/dev/null)"; fi
 	if [ "$p" = . ]; then slug=workspace; else slug="$(printf '%s' "$p" | sed 's|/|--|g')"; fi
 
 	run_script launch_run.sh --sync-prepare "$repo" || { rc=$?; sync_rc "$rc" "preparing the mirror of $repo"; return; }
@@ -603,7 +635,7 @@ sync_one() {
 	with_limit /dev/null env GIT_SSH_VARIANT=ssh \
 		GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=10 -o ControlMaster=no -o ProxyCommand=false -S $(sq "$SOCK_PATH")" \
 		git -C "$p" -c core.fsmonitor= -c core.hooksPath=/dev/null push -q --no-verify --force \
-		--receive-pack='PATH="$HOME/.local/bin:$PATH" git receive-pack' "$ALIAS:$target" "${commit}:refs/vrl/$slug"
+		--receive-pack='PATH="$HOME/.local/bin:$PATH" git -c receive.shallowUpdate=true receive-pack' "$ALIAS:$target" "${commit}:refs/vrl/$slug"
 	rc=$?
 	[ "$rc" = 0 ] || { sync_rc "$rc" "copying the commits of $p"; return; }
 	run_script launch_run.sh --sync-apply "$p" --commit "$commit" --branch "$branch" ${owner:+--owner "$owner"} ||
@@ -648,8 +680,10 @@ read_lines() {
 if [ -d "$p" ]; then ls -lA -- "$p" | head -n 500; exit 0; fi
 case "${p##*/}" in .env*) echo "vrl_ssh: read never prints a .env file" >&2; exit 3 ;; esac
 { [ -f "$p" ] && [ ! -L "$p" ]; } || { echo "vrl_ssh: not a regular file: $p" >&2; exit 3; }
-[ "$(head -c 8192 "$p" | wc -c)" = "$(head -c 8192 "$p" | tr -d '\000' | wc -c)" ] || { echo "vrl_ssh: $p is not a text file" >&2; exit 3; }
-tail -n "$n" -- "$p" | head -c 65536
+[ "$(head -c 8192 "$p" | wc -c)" = "$(head -c 8192 "$p" | LC_ALL=C tr -d '\000' | wc -c)" ] || { echo "vrl_ssh: $p is not a text file" >&2; exit 3; }
+b=$(tail -n "$n" -- "$p" | wc -c)
+[ "$b" -le 65536 ] || echo "vrl_ssh: the last $n lines hold $((b)) bytes; only their last 65536 follow"
+tail -n "$n" -- "$p" | tail -c 65536
 EOF
 }
 
@@ -687,7 +721,7 @@ fetch_kind() {
 }
 
 fetch_files() {
-	local p kind out raw cap marker size d rc head
+	local p kind out raw cap marker size d rc head q rest
 	[ -n "$WORKSPACE" ] || { err "fetch needs --workspace"; return 2; }
 	[ $# -ge 1 ] && [ $# -le 10 ] || { err "Give 1 to 10 paths after --"; return 2; }
 	[ -d docs/AGENTS ] || { err "Run fetch from the workspace root, the folder that holds docs/AGENTS/"; return 2; }
@@ -720,7 +754,7 @@ $(fetch_lines)" >"$raw"
 			124 | 129 | 130 | 143 | 255) err "The fetch of $p stopped"; return "$rc" ;;
 			*) err "The fetch of $p failed, with exit code $rc"; return 4 ;;
 		esac
-		VRL_MARKER="$marker" perl -e 'local $/; my $d = <STDIN>; my $m = "$ENV{VRL_MARKER}\n"; my $i = index($d, $m); exit 3 if $i < 0; print substr($d, $i + length($m));' <"$raw" >"$out" ||
+		VRL_MARKER="$marker" perl -e 'binmode STDIN; binmode STDOUT; local $/; my $d = <STDIN>; my $m = "$ENV{VRL_MARKER}\n"; my $i = index($d, $m); exit 3 if $i < 0; print substr($d, $i + length($m));' <"$raw" >"$out" ||
 			{ err "The fetch of $p returned no file"; return 4; }
 		size="$(wc -c <"$out" | tr -d ' ')"
 		[ "$size" -le "$cap" ] || { err "$p is larger than --max-mb $MAX_MB"; return 3; }
@@ -729,11 +763,17 @@ $(fetch_lines)" >"$raw"
 			png) [ "$head" = 89504e470d0a1a0a ] ;;
 			jpg) case "$head" in ffd8ff*) true ;; *) false ;; esac ;;
 			pdf) case "$head" in 255044462d*) true ;; *) false ;; esac ;;
-			svg | lock) [ "$(head -c 65536 "$out" | wc -c)" = "$(head -c 65536 "$out" | tr -d '\000' | wc -c)" ] &&
-				{ [ "$kind" = lock ] || head -c 65536 "$out" | grep -q '<svg'; } ;;
+			svg | lock) [ "$(head -c 65536 "$out" | wc -c)" = "$(head -c 65536 "$out" | LC_ALL=C tr -d '\000' | wc -c)" ] &&
+				{ [ "$kind" = lock ] || head -c 65536 "$out" | LC_ALL=C grep '<svg' >/dev/null; } ;;
 		esac || { err "$p is not the $kind file its name says"; return 3; }
 		d="tmp/fetched/$p"
-		mkdir -p "$(dirname "$d")" || return 4
+		# The folders below tmp/fetched, made one at a time, so that a symlink among them is refused.
+		q=tmp/fetched rest="${p%/*}/"
+		while [ -n "$rest" ]; do
+			q="$q/${rest%%/*}" rest="${rest#*/}"
+			if [ -L "$q" ] || { [ -e "$q" ] && [ ! -d "$q" ]; }; then err "$q here is a symlink or not a folder"; return 3; fi
+			[ -d "$q" ] || mkdir "$q" || return 4
+		done
 		if [ -L "$d" ] || { [ -e "$d" ] && [ ! -f "$d" ]; }; then err "$d here is a symlink or not a file"; return 3; fi
 		chmod 600 "$out" && mv -f "$out" "$d" || { err "Could not write $d"; return 4; }
 		printf 'fetched %s to %s (%s bytes)\n' "$p" "$d" "$size"

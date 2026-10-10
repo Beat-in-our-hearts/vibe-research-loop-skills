@@ -166,7 +166,11 @@ test_the_local_machine_of_a_remote_workspace_runs_nothing() {
 	run bash "$SCRIPTS/resources.sh"; expect_rc 2 && expect_out "remote-mode workspace"
 	run python3 "$SCRIPTS/gpu_hours.py" .; expect_rc 2 && expect_out "remote-mode workspace"
 	run bash "$SCRIPTS/setup_clis.sh" check --only uv; expect_rc 2 && expect_out "install uv and hf on the remote host"
+	mkdir -p sub && (cd sub && bash "$L" --pin none) >/dev/null 2>&1; expect [ $? = 2 ]
+	(cd sub && python3 "$SCRIPTS/gpu_hours.py" .) >/dev/null 2>&1; expect [ $? = 2 ]
 	VRL_REMOTE=1 run bash "$L" --pin none; expect_rc 0 && expect_out "code=none"
+	VRL_REMOTE=1 run bash "$L" --plan docs/plans/x.md --sync-apply main_repo --commit abc; expect_rc 2 && expect_out "take no other form"
+	run bash "$L" --sync-prepare main_repo; expect_rc 2
 	run bash "$L" --help; expect_rc 0
 	cd "$WS" || return 1
 }
@@ -182,6 +186,9 @@ test_status_reads_each_run() {
 	pkill -f "^sleep ${U}6\$"; sleep 2
 	run bash "$L" --plan docs/plans/2026-10-11-status.md --run going --status; expect_out "finished, exit code"
 	run bash "$L" --plan docs/plans/nothing.md --status; expect_rc 2
+	# A fence inside another block opens no run.
+	printf '````text\n```bash run=<run> gpus=1\n````\n```bash run=real gpus=0 code=none\necho real\n```\n' >docs/plans/2026-10-12-nested.md
+	run bash "$L" --plan docs/plans/2026-10-12-nested.md --status; expect_rc 0 && expect_out "run       real" && expect_no_out "<run>"
 }
 
 test_no_launch_while_a_sync_holds_the_checkout() {
