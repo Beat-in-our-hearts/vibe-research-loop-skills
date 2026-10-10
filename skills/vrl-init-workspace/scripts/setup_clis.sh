@@ -9,7 +9,7 @@
 #   install      Install each tool that ~/.local/bin lacks into ~/.local/bin, on macOS and Linux alike,
 #                even if another copy exists elsewhere, such as from Homebrew or apt; that copy stays.
 #   login        Log in to ntn, lark-cli, gh, and hf where not logged in yet. In a terminal, each CLI runs its own
-#                login. Without one, as under an agent or `ssh host 'bash -s'`, each prints a URL and a
+#                login. Without one, as under an agent or `vrl_ssh.sh script`, each prints a URL and a
 #                code to open in any browser, then waits for the approval. Tokens never pass through here.
 #   all          install, then login (the default).
 #
@@ -25,7 +25,7 @@
 # On the local machine of a remote-mode workspace, the one with docs/AGENTS/remote.md, it refuses uv and
 # hf, which belong on the remote host: that machine runs no code.
 #
-# On another host: ssh host 'bash -s -- install --only uv,hf --workspace /abs/path' < setup_clis.sh
+# On another host: vrl_ssh.sh script <alias> --workspace <dir> --limit 0 -- setup_clis.sh install --only uv,hf --workspace <dir>
 #
 # Everything runs inside main(), so that bash reads the whole script before running it when the
 # script comes in on stdin.
@@ -33,13 +33,17 @@
 # True when the folder or one above it holds docs/AGENTS/remote.md: the local machine of a remote-mode
 # workspace.
 in_remote_workspace() {
-	local d
-	d="$(cd "$1" 2>/dev/null && pwd -P)" || return 1
-	while :; do
-		[ ! -f "$d/docs/AGENTS/remote.md" ] || return 0
-		[ "$d" != / ] && [ -n "$d" ] || return 1
-		d="$(dirname "$d")"
+	local d s
+	for s in "$(cd "$1" 2>/dev/null && pwd)" "$(cd "$1" 2>/dev/null && pwd -P)"; do
+		[ -n "$s" ] || continue
+		d="$s"
+		while :; do
+			[ ! -f "$d/docs/AGENTS/remote.md" ] || return 0
+			[ "$d" != / ] && [ -n "$d" ] || break
+			d="$(dirname "$d")"
+		done
 	done
+	return 1
 }
 
 main() {
@@ -70,7 +74,7 @@ main() {
 		esac
 	done
 	[ -n "$TOOLS" ] || { err "--only lists no tool"; return 2; }
-	if [ -z "${VRL_REMOTE:-}" ] && { in_remote_workspace "$(pwd -P)" || { [ -n "$workspace" ] && in_remote_workspace "$workspace"; }; }; then
+	if [ -z "${VRL_REMOTE:-}" ] && { in_remote_workspace "$PWD" || { [ -n "$workspace" ] && in_remote_workspace "$workspace"; }; }; then
 		case " $TOOLS " in
 			*" uv "* | *" hf "*)
 				err "This is the local machine of a remote-mode workspace, which runs no code: install uv and hf on the remote host, through vrl_ssh.sh script, and pass --only with the others here."

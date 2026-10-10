@@ -274,15 +274,19 @@ test_sync_sees_every_run_of_the_checkout() {
 	(cd main_repo && git checkout -q HEAD~1 2>/dev/null)
 	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 0 && expect_out "synced main_repo code=main_repo@"
 	git -C main_repo checkout -q main
-	# The run's own output cannot hide it.
-	printf '# code:      other (x) @ y (clean)\n# finished:  warmup\n' >>"$TMP_ROOT/scratch-logs/abs/run.log"
+	# The run's own output cannot hide it, even a copy of a finished log's end.
+	printf '# code:      other (x) @ y (clean)\n# run-id:    0123456789ab\n# ---------- end 0123456789ab ----------\n# finished:  warmup\n' >>"$TMP_ROOT/scratch-logs/abs/run.log"
 	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 3 && expect_out "Runs still going"
 	pkill -f '^sleep 30$'; sleep 2
 	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 0
 	rm "$RW/logs" && mv "$TMP_ROOT/scratch-logs" "$RW/logs"
-	# A log outside logs/ is refused on the remote host.
+	# A log outside logs/, or in a symlinked folder below it, is refused on the remote host.
 	run bash "$V" script myhpc --workspace "$RW" -- launch_run.sh --purpose p --log tmp/x.log --code main_repo --no-gpu --nohup --machine box -- 'true'
 	expect_rc 2 && expect_out "goes under logs/"
+	mkdir -p "$TMP_ROOT/elsewhere-logs" && ln -s "$TMP_ROOT/elsewhere-logs" "$RW/logs/big"
+	run bash "$V" script myhpc --workspace "$RW" -- launch_run.sh --purpose p --log logs/big/x.log --code main_repo --no-gpu --nohup --machine box -- 'true'
+	expect_rc 3 && expect_out "stays inside logs/"
+	rm "$RW/logs/big"
 }
 
 test_sync_recovers_and_copies_what_it_is_told() {
@@ -298,16 +302,24 @@ test_sync_recovers_and_copies_what_it_is_told() {
 	rm -f "$RW/main_repo/train.py"
 	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 0 && expect [ ! -e "$RW/main_repo/.git/vrl-sync.pending" ]
 	expect grep -q 'print(6)' "$RW/main_repo/train.py"
+	# ...but a pending marker never lets a sync overwrite an edit that no checkout made.
+	(cd main_repo && echo extra >notes.txt && git add notes.txt && git commit -qm notes)
+	printf '%s\n%s\n' "$(git -C main_repo rev-parse HEAD)" "$(git -C main_repo rev-parse HEAD~1)" >"$RW/main_repo/.git/vrl-sync.pending"
+	echo 'HOTFIX = True' >>"$RW/main_repo/.gitignore"
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 3 && expect_out "no sync made" && expect grep -q HOTFIX "$RW/main_repo/.gitignore"
+	git -C "$RW/main_repo" checkout -q .gitignore && rm -f "$RW/main_repo/.git/vrl-sync.pending"
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 0
 	# --commit copies a commit other than the one checked out here.
 	old="$(git -C main_repo rev-parse HEAD~1)"
 	echo wip >>main_repo/train.py
+	run bash "$V" sync myhpc --workspace "$RW" --commit "" -- main_repo; expect_rc 2 && expect_out "takes a commit hash"
 	run bash "$V" sync myhpc --workspace "$RW" --commit "$old" -- main_repo
 	expect_rc 0 && expect_out "code=main_repo@$(git -C main_repo rev-parse --short=12 "$old")"
 	git -C main_repo checkout -q train.py
 	# OS clutter blocks nothing; a shallow reference repository syncs.
-	touch main_repo/.DS_Store
+	mkdir -p "main_repo/my dir" && touch main_repo/.DS_Store "main_repo/my dir/.DS_Store"
 	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 0
-	rm main_repo/.DS_Store
+	rm -r main_repo/.DS_Store "main_repo/my dir"
 	git clone -q --depth 1 "file://$LW/main_repo" ref_repos/up
 	run bash "$V" sync myhpc --workspace "$RW" -- ref_repos/up; expect_rc 0 && expect [ -f "$RW/ref_repos/up/train.py" ]
 	# A deleted worktree mirror is made again.
@@ -330,6 +342,8 @@ EOF
 VRL
 	run bash "$V" run myhpc --workspace "$RW" -- - <"$TMP_ROOT/cmd.txt"
 	expect_rc 0 && expect [ "$(cat "$RW/tmp/plot.py")" = "$(sed -n 2p "$TMP_ROOT/cmd.txt")" ]
+	run bash "$V" run myhpc --workspace "$RW" -- - </dev/null; expect_rc 2 && expect_out "empty command"
+	run bash "$V" run myhpc --workspace "$RW" -- '# only a comment'; expect_rc 0
 }
 
 test_read_prints_text_under_results_only() {

@@ -252,6 +252,13 @@ main() {
 		return 3
 	fi
 	mkdir -p "$(dirname "$log_path")" || { err "Could not create the log's folder"; return 1; }
+	if [ -n "${VRL_REMOTE:-}" ]; then
+		# A sync looks for runs in logs/ itself, not in a symlinked folder below it or outside it.
+		case "$(cd "$(dirname "$log_path")" && pwd -P)/" in
+			"$(cd "$ws/logs" && pwd -P)"/*) ;;
+			*) err "On the remote host, a log stays inside logs/, with no symlinked folder or .. on its path, so that a sync can see the run: $log"; return 3 ;;
+		esac
+	fi
 	local window
 	window="$(basename "$(dirname "$log_path")")/$(basename "$log_path" .log)"
 	window="$(printf '%s' "$window" | tr -c 'A-Za-z0-9_/-' '-')"
@@ -555,13 +562,16 @@ git_dir_of() {
 # True when this folder or one above it holds docs/AGENTS/remote.md: the local machine of a remote-mode
 # workspace.
 in_remote_workspace() {
-	local d
-	d="$(pwd -P)"
-	while :; do
-		[ ! -f "$d/docs/AGENTS/remote.md" ] || return 0
-		[ "$d" != / ] && [ -n "$d" ] || return 1
-		d="$(dirname "$d")"
+	local d s
+	for s in "$PWD" "$(pwd -P)"; do
+		d="$s"
+		while :; do
+			[ ! -f "$d/docs/AGENTS/remote.md" ] || return 0
+			[ "$d" != / ] && [ -n "$d" ] || break
+			d="$(dirname "$d")"
+		done
 	done
+	return 1
 }
 
 sha256_of() {
@@ -874,7 +884,8 @@ plan_runs() {
 			}
 			if (f != "") {
 				inside = 1; ch = substr(f, 1, 1); len = length(f)
-				n = split($0, words, /[ \t]+/)
+				info = $0; sub(/^ ? ? ?[`~][`~]*/, "", info)
+				n = split(info, words, /[ \t]+/)
 				for (i = 1; i <= n; i++) if (words[i] ~ /^run=/ && !seen[words[i]]++) print substr(words[i], 5)
 			}
 		}'
@@ -967,14 +978,12 @@ sync_prepare() {
 	mkdir -p "$dir" && git init -q --template= "$dir" || { err "Could not create the mirror $dir"; return 4; }
 }
 
-# The logs of runs that use the checkout, by the code line of their open run's header, and are still
-# going or cannot be told dead. A log that ends with its last run's own footer is skipped unread.
+# The logs of runs that use the checkout, by the code line of their open run's own header, and are
+# still going or cannot be told dead.
 live_runs_of() {
 	local want="$1" f id state pid
 	[ -d logs ] || return 0
 	find -H logs -name '*.log' -type f 2>/dev/null | while IFS= read -r f; do
-		id="$(grep '^# run-id:' "$f" | tail -n 1 | sed 's/^# run-id: *//')"
-		if [ -n "$id" ] && [ "$(tail -n 2 "$f" 2>/dev/null | head -n 1)" = "# ---------- end $id ----------" ]; then continue; fi
 		state="$(log_state "$f")"
 		case "$state" in open*) ;; *) continue ;; esac
 		[ "$(printf '%s' "$state" | cut -f4)" = "$want" ] || continue
@@ -1045,7 +1054,17 @@ sync_apply() {
 				return 3
 			fi
 			if [ -f "$pending" ]; then
-				# An earlier sync failed half way: finish it, from where it started.
+				# An earlier checkout failed half way: finish it, but only over what it could have changed.
+				there="$(git_safe "$dir" status --porcelain -z --untracked-files=all --no-renames 2>/dev/null | while IFS= read -r -d '' f; do
+					if git_safe "$dir" diff --quiet --no-ext-diff "${prev:-$(git_safe "$dir" hash-object -t tree /dev/null)}" "$(sed -n 1p "$pending")" -- ":(literal)${f:3}"; then
+						printf '%s\n' "$f"
+					fi
+				done | head -n 40)"
+				if [ -n "$there" ]; then
+					err "The mirror $dir holds changes that no sync made, such as files a run wrote there or an edit on this host: show them to the user, who decides what to keep, then sync again."
+					printf '%s\n' "$there" >&2
+					return 3
+				fi
 				old="$prev"
 			elif [ -n "$old" ]; then
 				checkout_dirty "$dir"
@@ -1071,14 +1090,19 @@ sync_apply() {
 			printf '%s\n%s\n' "$commit" "$old" >"$pending" || return 4
 			git_safe "$dir" -c core.autocrlf=false -c advice.detachedHead=false checkout -q -f --detach "$commit" ||
 				{ err "Could not check out $commit in $dir: fix the cause, such as a full disk, then sync again"; return 4; }
+			# The checkout is done: what differs from here on is no half-done checkout's doing.
+			[ "$(git_safe "$dir" rev-parse HEAD 2>/dev/null)" != "$commit" ] || rm -f "$pending"
 		fi
 	fi
 
 	[ "$(git_safe "$dir" rev-parse HEAD 2>/dev/null)" = "$commit" ] || { err "The mirror $dir is not at $commit after the checkout"; return 4; }
 	checkout_dirty "$dir"
-	[ $? = 1 ] || { err "The mirror $dir differs from its commit after the checkout: fix the cause, then sync again"; return 4; }
+	if [ $? != 1 ]; then
+		err "The mirror $dir differs from its commit after the checkout, such as by files the new commit no longer ignores: show the user, then sync again"
+		git_safe "$dir" status --short --untracked-files=all 2>/dev/null | head -n 40 >&2
+		return 4
+	fi
 	gd="$(git_dir_of "$dir")" && [ -d "$gd" ] || return 4
-	rm -f "$gd/vrl-sync.pending"
 	printf '%s\n' "$branch" >"$gd/vrl-sync.branch"
 	printf 'synced %s code=%s@%s diff=clean\n' "$dir" "$dir" "$(git_safe "$dir" rev-parse --short=12 HEAD)"
 	if [ "$dir" = . ]; then

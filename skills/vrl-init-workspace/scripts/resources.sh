@@ -107,13 +107,16 @@ err() { printf 'resources: %s\n' "$*" >&2; }
 # True when this folder or one above it holds docs/AGENTS/remote.md: the local machine of a remote-mode
 # workspace.
 in_remote_workspace() {
-	local d
-	d="$(pwd -P)"
-	while :; do
-		[ ! -f "$d/docs/AGENTS/remote.md" ] || return 0
-		[ "$d" != / ] && [ -n "$d" ] || return 1
-		d="$(dirname "$d")"
+	local d s
+	for s in "$PWD" "$(pwd -P)"; do
+		d="$s"
+		while :; do
+			[ ! -f "$d/docs/AGENTS/remote.md" ] || return 0
+			[ "$d" != / ] && [ -n "$d" ] || break
+			d="$(dirname "$d")"
+		done
 	done
+	return 1
 }
 
 is_uint() { case "$1" in "" | *[!0-9]*) return 1 ;; esac; }

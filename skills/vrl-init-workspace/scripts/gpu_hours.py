@@ -380,14 +380,19 @@ def workspace_tz():
 def in_remote_workspace():
     """True when this folder or one above it holds docs/AGENTS/remote.md: the local machine of a
     remote-mode workspace."""
-    d = os.path.realpath(os.getcwd())
-    while True:
-        if os.path.isfile(os.path.join(d, "docs", "AGENTS", "remote.md")):
-            return True
-        parent = os.path.dirname(d)
-        if parent == d:
-            return False
-        d = parent
+    starts = [os.path.realpath(os.getcwd())]
+    logical = os.environ.get("PWD", "")
+    if logical and os.path.realpath(logical) == starts[0]:
+        starts.append(logical)
+    for d in starts:
+        while True:
+            if os.path.isfile(os.path.join(d, "docs", "AGENTS", "remote.md")):
+                return True
+            parent = os.path.dirname(d)
+            if parent == d:
+                break
+            d = parent
+    return False
 
 
 def main(argv):

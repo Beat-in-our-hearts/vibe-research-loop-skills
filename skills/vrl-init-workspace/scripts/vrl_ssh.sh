@@ -43,7 +43,8 @@ Actions:
   read      Print the last lines of a text file in the remote workspace, under logs/, runs/, or tmp/,
             at most their last 64 KB, or list a folder there. It changes nothing.
   fetch     Copy up to 10 files from the remote workspace to tmp/fetched/<path> here, readable by you
-            only: figures (.png, .jpg, .jpeg, .svg, .pdf) under runs/ or tmp/, or a uv.lock under tmp/.
+            only: figures (.png, .jpg, .jpeg, .svg, .pdf) under runs/ or tmp/, or a lock file under tmp/
+            (uv.lock, poetry.lock, pdm.lock, pixi.lock, Pipfile.lock, conda-lock.yml, requirements*.txt).
             Run it from the workspace root.
 
 Options:
@@ -76,8 +77,9 @@ is the remote command's own, unless the line above it starts with `vrl_ssh:`. Ex
   124  a time limit cut the call
   129, 130, 143  the call was ended by SIGHUP, SIGINT, or SIGTERM
   255  ssh itself failed
-Every remote command gets VRL_REMOTE=1, which launch_run.sh, resources.sh, and gpu_hours.py need on the
-local machine of a remote-mode workspace, since that machine runs no code.
+Every remote command gets VRL_REMOTE=1. By it, launch_run.sh, resources.sh, gpu_hours.py, and setup_clis.sh tell
+the remote host from the local machine of a remote-mode workspace, where they refuse to run, since that machine
+runs no code; never set it yourself.
 The control socket lives in a folder only you can open: $XDG_RUNTIME_DIR/vrl-ssh, ~/.cache/vrl-ssh,
 or /tmp/vrl-ssh-<uid>, the first short enough for a socket path. Needs bash 3.2 or later; the remote
 login shell must be of the sh family, such as bash, zsh, or dash.
@@ -108,14 +110,14 @@ main() {
 	esac
 	shift
 
-	WORKSPACE="" STEP_LIMIT="" NO_ENV=0 LINES_WANTED=100 MAX_MB=20 SYNC_COMMIT=""
+	WORKSPACE="" STEP_LIMIT="" NO_ENV=0 LINES_WANTED=100 MAX_MB=20 SYNC_COMMIT="" COMMIT_GIVEN=""
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--workspace) WORKSPACE="${2:-}"; shift ;;
 			--limit) LIMIT="${2:-}"; LIMIT_GIVEN=1; shift ;;
 			--lines) LINES_WANTED="${2:-}"; shift ;;
 			--max-mb) MAX_MB="${2:-}"; shift ;;
-			--commit) SYNC_COMMIT="${2:-}"; shift ;;
+			--commit) SYNC_COMMIT="${2:-}"; COMMIT_GIVEN=1; shift ;;
 			--step-limit) STEP_LIMIT="${2:-}"; shift ;;
 			--no-env) NO_ENV=1 ;;
 			--) shift; break ;;
@@ -176,7 +178,11 @@ main() {
 			[ -n "$WORKSPACE" ] || { err "run needs --workspace"; return 2; }
 			[ $# -eq 1 ] || { err "Give the command as one quoted string after --, or - to read it from standard input"; return 2; }
 			need_master || return
-			if [ "$1" = - ]; then set -- "$(cat)"; fi
+			if [ "$1" = - ]; then
+				[ ! -t 0 ] || { err "run - reads the command from standard input, which is a terminal here: give it as a quoted heredoc"; return 2; }
+				set -- "$(cat)"
+			fi
+			case "$1" in *[![:space:]]*) ;; *) err "run got an empty command: give it after --, or give - and a heredoc"; return 2 ;; esac
 			run_command "$1"
 			;;
 		script)
@@ -490,7 +496,7 @@ run_command() {
 	input="$NEW_TMP"
 	# The braces give the command no input, so that nothing it runs reads the rest of the stream.
 	{
-		printf '{\n'
+		printf '{ :\n'
 		printf '%s\n' "$1"
 		printf '} </dev/null\n'
 	} >"$input"
@@ -551,9 +557,9 @@ lgit() {
 sync_paths() {
 	local p rc quiet
 	[ -n "$WORKSPACE" ] || { err "sync needs --workspace"; return 2; }
-	if [ -n "$SYNC_COMMIT" ]; then
+	if [ -n "$COMMIT_GIVEN" ]; then
 		[ $# -eq 1 ] || { err "--commit goes with one checkout"; return 2; }
-		case "$SYNC_COMMIT" in *[!0-9a-fA-F]*) err "--commit takes a commit hash"; return 2 ;; esac
+		case "$SYNC_COMMIT" in "" | *[!0-9a-fA-F]*) err "--commit takes a commit hash"; return 2 ;; esac
 	fi
 	case "$WORKSPACE" in *:*) err "sync needs a remote workspace path without a colon"; return 2 ;; esac
 	[ $# -ge 1 ] || { err "Give the checkouts to sync after --, such as . or main_repo"; return 2; }
@@ -583,7 +589,7 @@ sync_paths() {
 # Sync one checkout: check it here, make sure its mirror exists, push its commit there through the
 # master, then check it out on the remote host.
 sync_one() {
-	local p="$1" here top commit branch dirty git_dir common owner="" slug repo target trace rc
+	local p="$1" here top commit branch dirty git_dir common owner="" slug repo target trace rc idx
 	here="$(pwd -P)"
 	top="$(lgit "$p" rev-parse --show-toplevel 2>/dev/null)" && [ "$(cd "$top" && pwd -P)" = "$(cd "$p" && pwd -P)" ] ||
 		{ err "$p is not the top of a git checkout"; return 3; }
@@ -592,7 +598,7 @@ sync_one() {
 		dirty=""
 	else
 		commit="$(lgit "$p" rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null)" || { err "$p has no commit yet"; return 3; }
-		dirty="$(lgit "$p" status --porcelain --untracked-files=all 2>/dev/null)" || { err "git status failed in $p"; return 3; }
+		dirty="$(lgit "$p" status --porcelain -z --untracked-files=all 2>/dev/null | tr '\0' '\n')" || { err "git status failed in $p"; return 3; }
 		# Files the OS writes by itself, such as Finder's .DS_Store, are never copied and block nothing.
 		dirty="$(printf '%s
 ' "$dirty" | grep -Ev '^\?\? (.*/)?(\.DS_Store|\._[^/]*|Thumbs\.db|desktop\.ini)$')"
@@ -606,7 +612,11 @@ sync_one() {
 		err "$p has submodules, which sync does not copy: tell the user"
 		return 3
 	fi
-	if lgit "$p" ls-tree -r -z --name-only "$commit" | lgit "$p" check-attr --stdin -z filter | tr '\0' '\n' | awk 'NR % 3 == 0 && $0 == "lfs" { n++ } END { exit !n }'; then
+	# The commit's own attributes, through a temporary index: check-attr --source needs git 2.40.
+	new_tmp || return 1
+	idx="$NEW_TMP"
+	GIT_INDEX_FILE="$idx" lgit "$p" read-tree "$commit" || { err "git read-tree failed in $p"; return 3; }
+	if lgit "$p" ls-tree -r -z --name-only "$commit" | GIT_INDEX_FILE="$idx" lgit "$p" check-attr --cached --stdin -z filter | tr '\0' '\n' | awk 'NR % 3 == 0 && $0 == "lfs" { n++ } END { exit !n }'; then
 		err "$p has Git LFS files, which sync does not copy: keep large files under data/ on the remote host"
 		return 3
 	fi
@@ -711,7 +721,9 @@ EOF
 fetch_kind() {
 	case "$1" in
 		tmp/fetched | tmp/fetched/*) return 1 ;;
-		tmp/*/uv.lock | tmp/uv.lock) echo lock ;;
+		tmp/*/uv.lock | tmp/uv.lock | tmp/*/poetry.lock | tmp/poetry.lock | tmp/*/pdm.lock | tmp/pdm.lock | \
+			tmp/*/pixi.lock | tmp/pixi.lock | tmp/*/Pipfile.lock | tmp/Pipfile.lock | tmp/*/conda-lock.yml | tmp/conda-lock.yml | \
+			tmp/*/requirements*.txt | tmp/requirements*.txt) echo lock ;;
 		runs/*.png | tmp/*.png) echo png ;;
 		runs/*.jpg | runs/*.jpeg | tmp/*.jpg | tmp/*.jpeg) echo jpg ;;
 		runs/*.svg | tmp/*.svg) echo svg ;;
@@ -727,7 +739,7 @@ fetch_files() {
 	[ -d docs/AGENTS ] || { err "Run fetch from the workspace root, the folder that holds docs/AGENTS/"; return 2; }
 	for p in "$@"; do
 		result_path "$p" && fetch_kind "$p" >/dev/null ||
-			{ err "fetch takes figures (.png, .jpg, .jpeg, .svg, .pdf) under runs/ or tmp/, or a uv.lock under tmp/: $p"; return 2; }
+			{ err "fetch takes figures (.png, .jpg, .jpeg, .svg, .pdf) under runs/ or tmp/, or a lock file under tmp/, such as uv.lock or requirements.txt: $p"; return 2; }
 	done
 	for d in tmp tmp/fetched; do
 		if [ -L "$d" ] || { [ -e "$d" ] && [ ! -d "$d" ]; }; then err "$d here is a symlink or not a folder"; return 3; fi
