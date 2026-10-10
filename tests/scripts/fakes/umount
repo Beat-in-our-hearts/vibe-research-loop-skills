@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# Fake umount: drops the mount of the given path.
-state="${FAKE_SSH_STATE:?}"
-grep -vF " on $1 " "$state/mounts" >"$state/mounts.new" 2>/dev/null; mv "$state/mounts.new" "$state/mounts"

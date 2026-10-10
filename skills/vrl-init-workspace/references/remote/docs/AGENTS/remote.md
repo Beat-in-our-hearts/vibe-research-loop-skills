@@ -1,49 +1,76 @@
 # Remote
 
-**This machine computes on a remote host over SSH.** Agents are launched on the local machine, in the launch directory, which holds only the rules; every other file of the workspace lives on the remote host, and every workspace command runs there, apart from the few that the table under "Where commands run" keeps local. In the other rule files, "this machine" means the remote host.
+**This machine computes on a remote host over SSH.** Agents are launched on the local machine, at the workspace root, which keeps the rules, the plans, and all code. The local machine runs no code: the remote host runs it all, from mirrors of the local checkouts that only `vrl_ssh.sh sync` writes, and keeps every result. In the other rule files, "this machine" means the remote host wherever code runs or results are kept.
 
 | Item | Value |
 |---|---|
-| Local machine | <short name, and what it can run: e.g. 2 cores, 4 GB, no GPU> |
+| Local machine | <short name, and what it is: e.g. a laptop, 4 cores, no GPU> |
 | Remote host | `ssh <alias>`: the `Host <alias>` entry in the local `~/.ssh/config`, which holds the host name, user, port, and any jump host. `vrl_ssh.sh` reads the alias from this line, so keep both code spans on it |
 | Remote workspace | `<absolute path on the remote host>` |
-| Mount | `<launch directory>/<mount>`, an SSHFS view of the remote workspace |
 | Check limit | `<check limit>` seconds: the local time limit of the connection check |
 | Command limit | `<command limit>` seconds: the local time limit of a remote command; with the 5 seconds of grace a time limit adds, it stays below the agent's own time limit for a shell call |
 
 ## Where files live
 
-| Launch directory (local) | Remote workspace |
+| Local machine: the workspace root | Remote host: the remote workspace |
 |---|---|
-| `AGENTS.md`, `.gitignore`, `docs/AGENTS/`, harness config such as `.claude/`, and the mount folder | Everything else in the folder tree: `.env`, `.cache/`, the code folder, `worktrees/`, `ref_repos/`, `data/`, `docs/` except `docs/AGENTS/`, `logs/`, `runs/`, `tests/`, `tmp/` |
+| The workspace repository: `AGENTS.md`, `.gitignore`, `docs/`, and `tests/`. The code folder, `worktrees/`, and `ref_repos/`, as git checkouts. `.env`, holding only `TZ`. `logs/`, for the night watch's logs only. `tmp/`, for drafts and fetched files. Harness config such as `.claude/` | A mirror of the workspace repository and of each checkout, at the same paths. `.env`, with every variable the tools need. `.cache/`, `data/`, `logs/`, `runs/`, `tmp/`, and the environments |
 
-- A workspace path in a rule file, a skill, or Notion, such as `docs/plans/…`, `logs/…`, or `runs/…`, is relative to the remote workspace; only `AGENTS.md` and `docs/AGENTS/` are relative to the launch directory.
-- Locally, reach a remote path as `<mount>/<path>`; on the remote host, as `<remote workspace>/<path>`. Write absolute remote paths in logs, configs, launch commands, and Notion, never mount paths.
-- Every write through the mount is an immediate remote write; there is no local copy to sync. Never copy the remote workspace, or part of it, to the local machine.
-- Create nothing else in the launch directory.
+- A relative path names the same file on both sides: `main_repo/train.py` is edited here and runs there, while `logs/…` and `runs/…` exist only there. Write absolute remote paths, `<remote workspace>/<path>`, in configs and Notion, but give the VRL scripts paths relative to the workspace root, such as `--code main_repo` and `--log logs/…`.
+- Edit files only here. A mirror holds exactly the last commit synced to it, checked out with no branch: never edit it, commit in it, or run git commands that change it, except the `git checkout -- <path>` that discards a change the user approved, as "Sync" says.
+- Results stay on the remote host. Read them there, as "Connection" shows. Bring nothing back but a figure to upload or a lock file to commit, with `vrl_ssh.sh fetch`, which copies it into `tmp/fetched/`; delete the copy once you have used it.
+- Write plotting and other analysis scripts on the remote host, next to the figures they draw or under `tmp/`. They are the only files written there by hand. Send each with `vrl_ssh.sh run <alias> --workspace <remote workspace> -- -`, which reads the command from standard input, so that its quotes and `$` signs arrive unchanged:
+
+  ```
+  vrl_ssh.sh run <alias> --workspace <remote workspace> -- - <<'VRL'
+  cat > runs/<…>/figures/<name>.py <<'EOF'
+  <the script>
+  EOF
+  VRL
+  ```
+
+- The machine profile and this file describe one machine and stay out of the workspace repository, so no sync copies them.
 
 ## Where commands run
 
-| Local machine | Remote host, through SSH |
+| Local machine | Remote host, through `vrl_ssh.sh` |
 |---|---|
-| Reading and editing files, remote ones through the mount; `vrl_ssh.sh`; `ntn` or `lark-cli`; web requests such as paper searches; git of the launch directory | Everything else: git of the remote workspace and its repositories, Python, installs, smoke runs, training, evaluation, metrics, plotting, downloads, `hf`, and resource checks |
+| Reading and editing files; git in the local repositories; `vrl_ssh.sh` and `check_update.sh`; `ntn` or `lark-cli`; `gh`; web requests; text tools such as `grep`, `sed`, or `jq` | Everything that runs code: Python, installs, environments, tests, linters, builds, smoke runs, training, evaluation, metrics, plotting, downloads, `hf`, and the VRL scripts `launch_run.sh`, `resources.sh`, and `gpu_hours.py` |
 
-- Never run a project command locally, and never point a local command at the mount to run it (`python <mount>/…`, `git -C <mount>/…`, `pip`, `chmod`, …).
-- If the remote host or the mount is unreachable, stale, or read-only, and the steps under "Connection" do not bring it back, stop and report. Never fall back to the local machine, never create a local stand-in for the mount, and remount only when the user asks.
+- Run no code on the local machine, not even for a quick check: no `python`, `pip`, `uv`, `conda`, `pytest`, linter, type checker, notebook, `make`, or script of a checkout, and create no environment or lock file here. To check code, commit it, sync it, and check it on the remote host. Read JSON, such as a CLI's reply, with `jq` or the CLI's own `--jq`, never with Python. `launch_run.sh`, `resources.sh`, and `gpu_hours.py` refuse to run here.
+- Install no git hook or filter driver here, such as with `pre-commit install` or `nbstripout --install`: each runs code at every commit or status, and remote mode commits before every sync.
+- If the remote host is unreachable, and the steps under "Connection" do not bring it back, stop and report. Never fall back to the local machine.
+
+## Sync
+
+Code reaches the remote host only as commits, through `vrl_ssh.sh sync`.
+
+- Before a remote command uses changed code, a changed plan, or a changed test, commit the change, as the git rules allow, and sync each checkout it touches, with `.` for the workspace repository. Under the manual commit level, ask the user to commit, or to let you commit, before each sync. Name a worktree's own checkout, such as the code folder, before the worktree, in the same call or an earlier one.
+- The sync prints each checkout's pin, `code=<checkout>@<commit> diff=clean`: the pin to write into a plan block. For `.`, it also prints `sha256 <plan file> <hash>` for every plan file, changed or not: record at approval the hash on the line that names your plan file. Take pins and plan hashes only from these lines.
+- A mirror holds one commit at a time, and a sync refuses to change a mirror while a run that uses it is still going; a sync that changes nothing still prints the pin. Give each experiment whose code differs from that of a running or waiting experiment a worktree of its own, with the user's consent, and before you sync a checkout, check that no approved experiment still waits to launch a run pinned to the commit its mirror holds.
+- If a sync moved a mirror off the commit that a waiting run is pinned to, the launch refuses that run. Copy the pinned commit back with `vrl_ssh.sh sync … --commit <commit> -- <checkout>`: this needs no new approval while the plan and its pin are unchanged.
+- A sync also refuses, and changes nothing, when the mirror holds changes no sync made, such as files a run wrote into its checkout, or an edit made on the remote host. Show the user what it lists; never delete, move, or check out files in a mirror unless they ask. Once they do, discard what they approve with `vrl_ssh.sh run`: delete an untracked file, and restore a changed or deleted tracked one with `git -C <checkout> checkout -- <path>`. To keep a change instead, read it with `git -C <checkout> diff` there, make it here, commit it, then discard it in the mirror. A run writes only to `$VRL_OUTPUTS`, `logs/`, or `tmp/`; Python caches go to the `PYTHONPYCACHEPREFIX` that `.env` sets, or are ignored in `.gitignore`.
+- A free-form launch whose command uses a checkout passes `--code <checkout>`, never `none`, and its log goes under `logs/`, so that a sync can tell the checkout is in use. A run protects only the checkout its header names: sync another checkout it uses, such as a reference repository on its path, only while no such run is going.
+- Sync copies no submodule and no Git LFS file, and refuses a checkout that has either. Tell the user, who decides, for example, to commit a submodule's files on a local branch, or to download large files on the remote host under `data/`.
+- Build environments on the remote host without changing a tracked file, such as with `uv sync --locked`. A lock file changes on the remote host only, in a copy of the project's files under `tmp/`: fetch the new lock file, which fetch takes for `uv.lock`, `poetry.lock`, `pdm.lock`, `pixi.lock`, `Pipfile.lock`, `conda-lock.yml`, and `requirements*.txt`, show the user the change, then commit it here and sync.
+- Run the first sync of a large repository with `--limit 0`, as a background call.
 
 ## Connection
 
-One SSH master carries the whole session: every command and the mount. Reach the remote host only through `vrl_ssh.sh`, one of the VRL scripts on the local machine; never run `ssh`, `pkill`, or `sshfs` by hand. It names the host by its alias, sends no command without the master, so that nothing logs in by itself, keeps host-key checking on, and ends every call with a line `__EXIT <code>`. Read `vrl_ssh.sh --help` once per session for its exit codes.
+One SSH master carries the whole session: every command and every copy. Reach the remote host only through `vrl_ssh.sh`, one of the VRL scripts on the local machine; never run `ssh`, `scp`, `rsync`, or `pkill` by hand. It names the host by its alias, sends no command without the master, so that nothing logs in by itself, keeps host-key checking on, and ends every call with a line `__EXIT <code>`. Read `vrl_ssh.sh --help` once per session for its exit codes.
 
-| Task | Command, from the launch directory |
+| Task | Command, from the workspace root |
 |---|---|
-| Check the connection, before the first remote command of a task and whenever one fails or hangs | `vrl_ssh.sh check <alias> --limit <check limit> --mount <mount>` |
+| Check the connection, before the first remote command of a task and whenever one fails or hangs | `vrl_ssh.sh check <alias> --limit <check limit>` |
 | Start or repair the master, when the check fails | `vrl_ssh.sh connect <alias> --limit <check limit>` |
+| Copy committed checkouts to their mirrors | `vrl_ssh.sh sync <alias> --workspace <remote workspace> --limit <command limit> -- <checkout>...` |
 | Run a command in the remote workspace, with its `.env` | `vrl_ssh.sh run <alias> --workspace <remote workspace> --limit <command limit> -- '<command>'` |
 | Run a VRL script on the remote host | `vrl_ssh.sh script <alias> --workspace <remote workspace> --limit <command limit> -- <launch_run.sh, resources.sh, or gpu_hours.py> <its options>` |
-| Mount the remote workspace again, only when the user asks | `vrl_ssh.sh mount <alias> --workspace <remote workspace> --mount <mount>` |
+| See how each run of a plan stands, with the end of its log | `vrl_ssh.sh script <alias> --workspace <remote workspace> --limit <command limit> -- launch_run.sh --plan docs/plans/<plan file> --status` |
+| Read the end of a log or a text result, or list a folder, under `logs/`, `runs/`, or `tmp/` | `vrl_ssh.sh read <alias> --workspace <remote workspace> --limit <command limit> [--lines <n>] -- <path>` |
+| Copy figures, or a lock file, into `tmp/fetched/` | `vrl_ssh.sh fetch <alias> --workspace <remote workspace> --limit <command limit> -- <path>...` |
 
-- The command after `run` is one string, sent as it is to a remote bash: it needs no quoting of its own, may span several lines, and gets no input, so pass the non-interactive option of anything that would ask, such as `-y` or `git commit -m`. Anything that may take longer than the command limit starts with `launch_run.sh` in the remote tmux session, which returns at once with the log; check on it later with short commands. For example, in the free form: `vrl_ssh.sh script <alias> --workspace <remote workspace> -- launch_run.sh --purpose '<...>' --log logs/<date>-<task>.log --code <checkout> --no-gpu --machine <name> --tmux <the machine's tmux session> -- '<command>'`.
+- The command after `run` is one string, sent as it is to a remote bash: it needs no quoting of its own, may span several lines, and gets no input, so pass the non-interactive option of anything that would ask, such as `-y`. Anything that may take longer than the command limit starts with `launch_run.sh` in the remote tmux session, which returns at once with the log; check on it later with short commands. For example, in the free form: `vrl_ssh.sh script <alias> --workspace <remote workspace> -- launch_run.sh --purpose '<...>' --log logs/<date>-<task>.log --code <checkout> --no-gpu --machine <name> --tmux <the machine's tmux session> -- '<command>'`.
 - Keep the command limit plus 5 seconds below the agent's own time limit for a shell call, such as 2 minutes by default in Claude Code. A command that surely needs longer, but not long enough for the tmux session, may get a longer `--limit` for that call alone, still 5 seconds short of the agent's own.
 - Run every `vrl_ssh.sh` call as a background call of the agent's shell tool where it has one, such as `run_in_background` in Claude Code, and read its output right after starting it: a shell tool can miss that a command has exited, and a background call never blocks the session.
   - The `__EXIT` line means the call finished, with its exit code: go on.
@@ -51,22 +78,23 @@ One SSH master carries the whole session: every command and the mount. Reach the
   - If the line is there but the tool still lists the call as running, go on, and stop that call, such as with `TaskStop` in Claude Code.
 - Read an exit code by its source. For `run` and `script`, it is the remote command's own unless the line above `__EXIT` starts with `vrl_ssh:`; the codes below are `vrl_ssh.sh`'s own.
   - 3 from `connect`: the login needs a password, a passphrase, or a second factor. Ask the user to run the command it prints in their own terminal, and wait.
+  - 3 from `sync`, `read`, or `fetch`: refused, with the reason, and nothing changed for that path; the paths before it in the same call are done. Act on the reason; never work around it.
+  - 4 from `sync` or `fetch`: a copy or a remote step failed. Try again once the cause is fixed.
   - 5: the host key could not be verified, new or changed. Stop and report.
   - 6 or 7: no master is up, or it hangs. Run `connect` once; if that fails, stop and report.
   - 1 or 255 from `check` or `connect`: the remote host does not answer. Stop and report.
   - 98: the remote workspace has no `.env`. Stop and report; `--no-env` is only for setup, before `.env` exists.
   - 124: a time limit cut the call. A command it started may still run: read its log before you try again.
-- Before reading or writing through the mount, check the connection with `--mount`, which never touches the mount itself: reading a mount whose connection is dead can hang, the file tools included. While the check fails, touch nothing under the mount; repair the connection first.
 - Change the alias's entry in `~/.ssh/config` only when the user asks. Never print, copy, or upload keys, tokens, or passwords.
 - Stop only processes you started.
 
 ## Git
 
-- The launch directory is the rules repository, holding `AGENTS.md` and `docs/AGENTS/`; the remote workspace root is the workspace repository, holding `docs/` and `tests/`. Both follow the workspace repository rules in the git rules, each with its own remote, if any.
-- The machine profile and this file describe one machine and stay out of the rules repository.
+- The workspace root is the workspace repository, holding `AGENTS.md`, `docs/`, and `tests/`; the code folder, `worktrees/`, and `ref_repos/` sit in it as checkouts of their own repositories. Every commit, push, and pull happens here, under the git rules. The remote host holds only mirrors, with no remote, no branch, and no commit of their own.
+- A run starts only from a commit, since a sync copies nothing else: no run ever needs a saved diff.
 
 ## Notion
 
-- Run `ntn` locally. Take `docs/notion/ids.md` and the `TZ` of `.env` from the mount.
+- Run `ntn` here, with `docs/notion/ids.md` and the `TZ` of the local `.env`.
 - <Only if the local machine has no OS keychain:> `ntn` keeps its login in a file: run it with `NOTION_KEYRING=0`, which the user's shell profile exports.
-- Draw figures on the remote host; upload each from the mount: `ntn files create --filename <name>.png --content-type image/png < <mount>/<path>.png`.
+- Draw figures on the remote host, fetch each one, upload it from `tmp/fetched/` with `ntn files create --filename <name>.png --content-type image/png < tmp/fetched/<path>.png`, then delete the copy.

@@ -65,6 +65,11 @@ main() {
 		esac
 		shift
 	done
+	# The local machine of a remote-mode workspace runs no code; the remote host sets VRL_REMOTE.
+	if [ -z "${VRL_REMOTE:-}" ] && in_remote_workspace; then
+		err "This is the local machine of a remote-mode workspace: run resources.sh on the remote host, through vrl_ssh.sh script."
+		return 2
+	fi
 	is_uint "$free_mib" && is_uint "$max_util" && is_uint "$samples" && is_uint "$limit" &&
 		[ "$samples" -ge 1 ] && [ "$samples" -le 5 ] ||
 		{ err "--free-mib, --max-util, --samples (1 to 5), and --limit take whole numbers"; return 2; }
@@ -99,6 +104,21 @@ main() {
 }
 
 err() { printf 'resources: %s\n' "$*" >&2; }
+# True when this folder or one above it holds docs/AGENTS/remote.md: the local machine of a remote-mode
+# workspace.
+in_remote_workspace() {
+	local d s
+	for s in "$PWD" "$(pwd -P)"; do
+		d="$s"
+		while :; do
+			[ ! -f "$d/docs/AGENTS/remote.md" ] || return 0
+			[ "$d" != / ] && [ -n "$d" ] || break
+			d="$(dirname "$d")"
+		done
+	done
+	return 1
+}
+
 is_uint() { case "$1" in "" | *[!0-9]*) return 1 ;; esac; }
 # A number such as 12 or 3.5: digits, with at most one dot between digits.
 is_num() { printf '%s' "$1" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; }

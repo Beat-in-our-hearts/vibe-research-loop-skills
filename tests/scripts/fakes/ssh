@@ -48,5 +48,7 @@ if ! alive; then
 fi
 [ -z "${FAKE_SSH_HANG:-}" ] || exec sleep 1000
 cd "${FAKE_HOME:?}" || exit 1
+# What a remote login may print before the command's own output.
+[ -z "${FAKE_SSH_BANNER:-}" ] || echo "$FAKE_SSH_BANNER"
 if [ "$n" = 1 ]; then exec ${FAKE_SSH_SHELL:-sh} -c "$*" </dev/null; fi
 exec ${FAKE_SSH_SHELL:-sh} -c "$*"

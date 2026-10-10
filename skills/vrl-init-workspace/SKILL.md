@@ -1,6 +1,6 @@
 ---
 name: vrl-init-workspace
-description: Initialize a vibe-research-loop workspace in the current directory, or add this machine to an existing one, by following the bundled guide's setup prompts in order - the workspace, the memory store (Notion, or Feishu) with its CLI and the project's pages, and optionally a Hugging Face bucket. Supports a remote mode, in which this machine keeps only the rules and computes on a remote host over SSH. Can also redo a single part.
+description: Initialize a vibe-research-loop workspace in the current directory, or add this machine to an existing one, by following the bundled guide's setup prompts in order - the workspace, the memory store (Notion, or Feishu) with its CLI and the project's pages, and optionally a Hugging Face bucket. Supports a remote mode, in which this machine keeps the rules and the code but runs none of it, and a remote host reached over SSH runs the code and keeps the results. Can also redo a single part.
 disable-model-invocation: true
 ---
 
@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 [references/guide/](references/guide/) holds the English edition of the vibe-research-loop guide, so the guide never needs to be cloned; `<guide>` in its prompts means that folder. Read its [README.md](references/guide/README.md) first.
 
-[references/remote/](references/remote/) adds a remote mode, which the guide lacks: the agent runs on the local machine and computes on a remote host over SSH; the launch directory keeps only `AGENTS.md` and `docs/AGENTS/`, and every other file lives in a remote workspace, mounted in the launch directory with SSHFS. `<remote>` in its prompts means that folder. In remote mode, also read [remote_prompts.md](references/remote/remote_prompts.md) and [docs/AGENTS/remote.md](references/remote/docs/AGENTS/remote.md), and follow the latter once the connection is up.
+[references/remote/](references/remote/) adds a remote mode, which the guide lacks: the agent runs on the local machine, which keeps the workspace repository and the code and runs no code; a remote host reached over SSH runs it all, from mirrors that `scripts/vrl_ssh.sh sync` copies there as commits, and keeps every result. `<remote>` in its prompts means that folder. In remote mode, also read [remote_prompts.md](references/remote/remote_prompts.md) and [docs/AGENTS/remote.md](references/remote/docs/AGENTS/remote.md), and follow the latter once the connection is up.
 
 [references/feishu/](references/feishu/) lets the workspace keep its research memory in Feishu (飞书, the China edition) instead of Notion, through the `lark-cli` CLI; `<feishu>` in its prompts means that folder. With Feishu, read [feishu_prompts.md](references/feishu/feishu_prompts.md) and [docs/AGENTS/feishu.md](references/feishu/docs/AGENTS/feishu.md), and use them in place of the guide's Notion prompts.
 
@@ -19,7 +19,7 @@ At the start, run `bash <this skill's folder>/scripts/check_update.sh`. If it re
    | Situation | Case |
    |---|---|
    | The current directory is empty | First machine |
-   | The workspace repository, or in remote mode the rules repository, is cloned here, or the user gives its URL | Another machine, after cloning the repository here if needed |
+   | The workspace repository is cloned here, or the user gives its URL | Another machine, after cloning the repository here if needed |
 
    | Situation | Mode |
    |---|---|
@@ -39,8 +39,8 @@ At the start, run `bash <this skill's folder>/scripts/check_update.sh`. If it re
    | Mode | Where | Tools |
    |---|---|---|
    | Local | This machine | `uv`, the memory store's CLI, `gh`, and `hf` if the user wants the bucket |
-   | Remote | This machine | The memory store's CLI, `gh` |
-   | Remote | The remote host, once the remote workspace's `.env` exists, after the Rule files step of "Set up a remote workspace" or the This machine step of "Add a remote machine", run through the master as `scripts/vrl_ssh.sh script <alias> --workspace <remote workspace> --limit 0 -- setup_clis.sh <command> --only <tools> --workspace <remote workspace>`, in the background, so that the caches and the `hf` login land in the workspace's `.cache/` | `uv`, `gh`, and `hf` if the user wants the bucket |
+   | Remote | This machine, which runs no code: always pass `--only` with these tools, since the script refuses `uv` and `hf` here only once `docs/AGENTS/remote.md` exists | The memory store's CLI, `gh` |
+   | Remote | The remote host, once the remote workspace's `.env` exists, in the Rule files step of "Set up a remote workspace" or the Remote host step of "Add a remote machine", run through the master as `scripts/vrl_ssh.sh script <alias> --workspace <remote workspace> --limit 0 -- setup_clis.sh <command> --only <tools> --workspace <remote workspace>`, in the background, so that the caches and the `hf` login land in the workspace's `.cache/` | `uv`, and `hf` if the user wants the bucket |
 
    - Run `check` first and show the user its table; run `install` for what is missing only after they agree.
    - Run `login` in the background, since `lark-cli`, `gh`, and `hf` wait until the user approves; `lark-cli` asks for two approvals, one to register the user's app and one to log in. Without a terminal, each login prints a URL and a one-time code: pass them to the user at once, as `hf`'s code expires in 5 minutes, and tell them to open the URL in any browser and check the code. Never ask for a token or pass one to a command.
@@ -54,6 +54,6 @@ At the start, run `bash <this skill's folder>/scripts/check_update.sh`. If it re
    | Memory store | "Set up Notion" in [notion_prompts.md](references/guide/notion_guide/notion_prompts.md); with Feishu, "Set up Feishu" in [feishu_prompts.md](references/feishu/feishu_prompts.md) instead | "Add a machine" in the same file |
    | Hugging Face | If the user wants it, "Set up Hugging Face" in [hf_prompts.md](references/guide/hf_guide/hf_prompts.md) | "Add a machine" in the same file, if the workspace has `docs/AGENTS/hf.md` |
 
-   In remote mode, `ntn` or `lark-cli` runs on the local machine and `hf` on the remote host; `.env` and the IDs file, `docs/notion/ids.md` or `docs/feishu/ids.md`, are in the remote workspace, reached through the mount. Follow "Notion and Hugging Face in remote mode" in [remote_prompts.md](references/remote/remote_prompts.md) alongside the Notion and Hugging Face prompts.
+   In remote mode, `ntn` or `lark-cli` runs on the local machine, with the IDs file, `docs/notion/ids.md` or `docs/feishu/ids.md`, and the `TZ` of the local `.env`; `hf` runs on the remote host, with the remote workspace's `.env`. Follow "Notion and Hugging Face in remote mode" in [remote_prompts.md](references/remote/remote_prompts.md) alongside the Notion and Hugging Face prompts.
 5. **Notion IDs.** With Feishu, "Set up Feishu" writes `docs/feishu/ids.md` itself; skip this step. After "Set up Notion", write `docs/notion/ids.md` in the workspace with the header `| Object | Title in Notion | Page ID | Database ID | Data source ID |`: one row each for the project page and the Literature Library, with their page IDs, and for Ideas, Experiments, Findings, and Papers, with their database and data source IDs; put `—` in the cells that do not apply. The research skills read it. Commit it as the workspace's git rules say.
-6. **Report.** Show the user one table of the tools and the parts, in place of the prompts' own reports: what was installed or created, what was skipped, and what is left for them, such as a login they have not approved yet, the script's notes, or the steps that need the Notion app. Then show the README's "After setup" table, leaving out its row on reading the guide in the home directory. In remote mode, also say that the mount must be up before a session starts, and give the command that remounts it.
+6. **Report.** Show the user one table of the tools and the parts, in place of the prompts' own reports: what was installed or created, what was skipped, and what is left for them, such as a login they have not approved yet, the script's notes, or the steps that need the Notion app. Then show the README's "After setup" table, leaving out its row on reading the guide in the home directory. In remote mode, also say that the local machine runs no code, and that the SSH master must be up before a session starts, with the command that starts it, its path filled in: `bash <VRL scripts>/vrl_ssh.sh connect <alias>`.

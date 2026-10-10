@@ -377,9 +377,33 @@ def workspace_tz():
     return datetime.datetime.now().astimezone().tzinfo
 
 
+def in_remote_workspace():
+    """True when this folder or one above it holds docs/AGENTS/remote.md: the local machine of a
+    remote-mode workspace."""
+    starts = [os.path.realpath(os.getcwd())]
+    logical = os.environ.get("PWD", "")
+    if logical and os.path.realpath(logical) == starts[0]:
+        starts.append(logical)
+    for d in starts:
+        while True:
+            if os.path.isfile(os.path.join(d, "docs", "AGENTS", "remote.md")):
+                return True
+            parent = os.path.dirname(d)
+            if parent == d:
+                break
+            d = parent
+    return False
+
+
 def main(argv):
     as_json, since, until, targets = False, None, None, []
     args = list(argv)
+    # The local machine of a remote-mode workspace runs no code; the remote host sets VRL_REMOTE.
+    if in_remote_workspace() and not os.environ.get("VRL_REMOTE") \
+            and not any(a in ("-h", "--help") for a in args):
+        print("gpu_hours: this is the local machine of a remote-mode workspace: run gpu_hours.py on the "
+              "remote host, through vrl_ssh.sh script", file=sys.stderr)
+        return 2
     while args:
         a = args.pop(0)
         if a in ("-h", "--help"):

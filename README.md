@@ -103,7 +103,7 @@ The agent also picks a research skill on its own when a request matches its desc
   | `launch_run.sh` | Launches a long-running command from the workspace root with its log header and footer, in tmux or in the background; launches a run of an approved plan only while the plan file has the hash recorded at approval and the code matches the plan's pin; refuses a second copy, a run that has ended unless told to restart or resume it, a job scheduler, a command that sets `CUDA_VISIBLE_DEVICES`, and a command that seems to hold a secret |
   | `resources.sh` | Prints the GPU, memory, and storage rows of a report, and which GPUs are free: no process, idle in two samples, and claimed by no running log |
   | `gpu_hours.py` | Counts the single-GPU hours that runs took, from their logs, for an idea's budget, and exits 3 when it cannot count them all |
-  | `vrl_ssh.sh` | Reaches the remote host in remote mode through one SSH master, with time limits; it never asks for a password: when the login needs one, it prints the command for you to run in your own terminal |
+  | `vrl_ssh.sh` | Reaches the remote host in remote mode through one SSH master, with time limits: runs commands there, copies commits to its mirrors of your checkouts, reads results, and brings back figures to upload. It never asks for a password: when the login needs one, it prints the command for you to run in your own terminal |
 - The research skills keep the IDs of the Notion project page and databases in the workspace's `docs/notion/ids.md`.
 - The research memory can live in Feishu (飞书, the China edition) instead of Notion: `vrl-init-workspace` asks which. In Feishu, each project is a wiki doc with a Base holding the Ideas, Experiments, and Findings tables, and each entry is a record plus a doc for its body; the workspace's `docs/AGENTS/feishu.md` tells the research skills what each Notion step becomes. Everything else, the review by colors included, works the same, except that record fields carry no color: review their values in the entry's doc.
 
@@ -121,15 +121,17 @@ Rewritten text loses its mark; a mark the agent has not resolved stays in place.
 
 ## Remote mode
 
-When the machine you run the agent on has no GPU and jobs run on a remote host over SSH, such as an HPC container, choose remote mode in `vrl-init-workspace`. Its prompts live in [`skills/vrl-init-workspace/references/remote/`](skills/vrl-init-workspace/references/remote/), outside the bundled guide, so that refreshing the guide leaves them alone.
+When the machine you run the agent on has no GPU and jobs run on a remote host over SSH, such as an HPC container, choose remote mode in `vrl-init-workspace`. Your code stays on your machine, which runs none of it; the remote host runs it all and keeps every result. Its prompts live in [`skills/vrl-init-workspace/references/remote/`](skills/vrl-init-workspace/references/remote/), outside the bundled guide, so that refreshing the guide leaves them alone.
 
-| | Local machine: the launch directory | Remote host: the remote workspace |
+| | Local machine: the workspace root | Remote host: the remote workspace |
 |---|---|---|
-| Files | `AGENTS.md`, `docs/AGENTS/` (with `remote.md`), and an SSHFS mount of the remote workspace | Everything else: `.env`, code, `docs/plans/`, `docs/notion/ids.md`, `logs/`, `runs/`, `tests/`, … |
-| Commands | File edits, `vrl_ssh.sh`, `ntn`, web requests, git of the rules | Everything else, through one SSH master and a tmux session |
-| Git | The rules repository | The workspace repository |
+| Files | The workspace repository (`AGENTS.md`, `docs/`, `tests/`), the code and its worktrees, and a `.env` holding only the time zone | Mirrors of the workspace repository and of each checkout, `.env`, environments, `data/`, `logs/`, `runs/`, `.cache/` |
+| Commands | File edits, git, `vrl_ssh.sh`, `ntn` or `lark-cli`, `gh`, web requests; no Python, environment, test, or linter | Everything that runs code, through one SSH master and a tmux session |
+| Git | Every repository, with every commit and push | Mirrors only, written by `vrl_ssh.sh sync` |
 
-The remote host is named by an alias in your `~/.ssh/config`, such as `gpu-box`, so a jump host or a key works as it does in your own `ssh`; if you have none, the setup adds one with your approval. The research skills switch to remote mode whenever `docs/AGENTS/remote.md` exists in the launch directory. Mount the remote workspace before starting a session there.
+Code reaches the remote host only as commits: the agent commits a change, as your git level allows, and `vrl_ssh.sh sync` pushes it through the SSH master into a mirror at the same path, checked out with no branch. A sync refuses, changing nothing, while a run still uses that checkout or while the mirror holds a change no sync made, such as a file a run wrote there. Logs and results stay on the remote host, where the agent reads them, and only a figure to upload to Notion, or a new lock file to commit, comes back. Plotting and analysis scripts are the one kind of code written on the remote host, next to their figures. `launch_run.sh`, `resources.sh`, and `gpu_hours.py` refuse to run on your machine.
+
+The remote host is named by an alias in your `~/.ssh/config`, such as `gpu-box`, so a jump host or a key works as it does in your own `ssh`; if you have none, the setup adds one with your approval. Give each local machine a remote workspace of its own. The research skills switch to remote mode whenever `docs/AGENTS/remote.md` exists at the workspace root. The agent starts the SSH master itself; when the login needs a password, it gives you the command to run in your own terminal.
 
 ## Compatibility
 
@@ -143,7 +145,7 @@ Each agent ignores the other's settings, so one folder serves both.
 
 ## Maintaining
 
-Test the scripts with `bash tests/scripts/run.sh`, which runs them against stand-ins for `ssh`, `nvidia-smi`, `mount`, and `sshfs`; GitHub Actions runs the same tests, with shellcheck, on Linux and macOS whenever the scripts change.
+Test the scripts with `bash tests/scripts/run.sh`, which runs them against stand-ins for `ssh` and `nvidia-smi`; GitHub Actions runs the same tests, with shellcheck, on Linux and macOS whenever the scripts change.
 
 `skills/vrl-init-workspace/references/guide/` began as a copy of the English guide, and since 0.2.0 this copy is the source of truth: the skills' workspace rules and templates depend on it, so change it here, with the skills that use it, and port the change to the guide afterwards. Never overwrite it with the guide's files.
 
@@ -154,6 +156,12 @@ Install the new release as above. A workspace set up by 0.1.x has older rule fil
 - Redo step 4 of "Set up a workspace" in `workspace_prompts.md`, or step 5 of "Set up a remote workspace" in `remote_prompts.md`, which fills the new rows of `docs/AGENTS/machine.md`: the tmux session with the command that starts it, and the path of the VRL scripts. A proxy the machine needs moves into `.env`.
 - Add the GPU hours row to section 5 of each finished experiment, from `gpu_hours.py` on its log folder, since the budget left now counts those rows.
 - Experiments planned before the upgrade have no plan blocks, so finish them by hand, or plan them again.
+- A remote-mode workspace no longer mounts the remote host, and its code moves to your machine. Once no run is going:
+  1. Have the agent commit any change made on the remote host and push it, or save it as a patch.
+  2. Unmount the old mount yourself, and move the old launch directory aside.
+  3. In a new, empty directory, which becomes the workspace root, clone the workspace repository and the code. A repository with no remote of its own lives only on the remote host: clone it yourself, in your own terminal, with `git clone <alias>:<remote workspace>` or `git clone <alias>:<remote workspace>/<code folder>`, then run `git remote remove origin` in the clone. Replace the workspace repository's `.gitignore` with the one in step 3 of "Set up a remote workspace", which tracks `AGENTS.md` and keeps `docs/AGENTS/machine.md` and `docs/AGENTS/remote.md` out, and bring `AGENTS.md` and `docs/AGENTS/` over from the old launch directory.
+  4. Write the local `.env` and the new `remote.md` as that prompt says, and add `PYTHONPYCACHEPREFIX` and the time zone to the remote `.env`.
+  5. Sync `.` and every checkout. A remote checkout that still holds a change of its own refuses the first sync until the change is moved away; the old remote workspace repository becomes the mirror of `.` once your clone's history is synced into it.
 
 ## License
 
