@@ -158,6 +158,40 @@ test_plan_form_refuses_what_a_reader_would_not_see() {
 	run bash "$L" --purpose p --log logs/r/link.log "${COM[@]}" -- 'echo hi'; expect_rc 3 && expect [ ! -e "$TMP_ROOT/target.log" ]
 }
 
+test_the_local_machine_of_a_remote_workspace_runs_nothing() {
+	mkdir -p "$TMP_ROOT/lm/docs/AGENTS" && cd "$TMP_ROOT/lm" || return 1
+	printf 'TZ=UTC\n' >.env && touch docs/AGENTS/remote.md
+	run bash "$L" --purpose p --log logs/x.log "${COM[@]}" -- 'echo ran'; expect_rc 2 && expect_out "runs no code" && expect [ ! -e logs/x.log ]
+	run bash "$L" --pin none; expect_rc 2
+	run bash "$SCRIPTS/resources.sh"; expect_rc 2 && expect_out "remote-mode workspace"
+	run python3 "$SCRIPTS/gpu_hours.py" .; expect_rc 2 && expect_out "remote-mode workspace"
+	run bash "$SCRIPTS/setup_clis.sh" check --only uv; expect_rc 2 && expect_out "install uv and hf on the remote host"
+	VRL_REMOTE=1 run bash "$L" --pin none; expect_rc 0 && expect_out "code=none"
+	run bash "$L" --help; expect_rc 0
+	cd "$WS" || return 1
+}
+
+test_status_reads_each_run() {
+	printf '```bash run=ended gpus=0 code=none\necho finished\n```\n```bash run=going gpus=0 code=none\nsleep %s6\n```\n```bash run=later gpus=0 code=none\necho later\n```\n' "$U" >docs/plans/2026-10-11-status.md
+	s="$(sha docs/plans/2026-10-11-status.md)"
+	run bash "$L" --plan docs/plans/2026-10-11-status.md --run ended --plan-sha256 "$s" "${COM2[@]}" --wait 6; expect_rc 0
+	run bash "$L" --plan docs/plans/2026-10-11-status.md --run going --plan-sha256 "$s" "${COM2[@]}"; expect_rc 0
+	run bash "$L" --plan docs/plans/2026-10-11-status.md --status
+	expect_rc 0 && expect_out "finished, exit code 0" && expect_out "running, PID" && expect_out "not started" && expect_out "run       later"
+	run bash "$L" --plan docs/plans/2026-10-11-status.md --run ended --status; expect_rc 0 && expect_no_out "run       going"
+	pkill -f "^sleep ${U}6\$"; sleep 2
+	run bash "$L" --plan docs/plans/2026-10-11-status.md --run going --status; expect_out "finished, exit code"
+	run bash "$L" --plan docs/plans/nothing.md --status; expect_rc 2
+}
+
+test_no_launch_while_a_sync_holds_the_checkout() {
+	git init -q srepo && (cd srepo && git config user.name t && git config user.email t@t && git config commit.gpgsign false && echo v1 >a.py && git add . && git commit -qm init)
+	mkdir srepo/.git/vrl-sync.lock
+	run bash "$L" --purpose p --log logs/s/sync.log "${COM2[@]}" --code srepo -- 'echo hi'; expect_rc 3 && expect_out "A sync of srepo is in progress"
+	rmdir srepo/.git/vrl-sync.lock
+	run bash "$L" --purpose p --log logs/s/sync.log "${COM2[@]}" --code srepo --wait 6 -- 'echo hi'; expect_rc 0
+}
+
 test_wait_takes_seconds() {
 	run bash "$L" --purpose p --log logs/w/w.log "${COM[@]}" --wait -- 'echo hi'; expect_rc 2 && expect_out "--wait takes whole seconds"
 }

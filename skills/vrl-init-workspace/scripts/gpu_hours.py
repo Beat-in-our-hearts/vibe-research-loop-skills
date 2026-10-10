@@ -380,6 +380,12 @@ def workspace_tz():
 def main(argv):
     as_json, since, until, targets = False, None, None, []
     args = list(argv)
+    # The local machine of a remote-mode workspace runs no code; the remote host sets VRL_REMOTE.
+    if os.path.isfile("docs/AGENTS/remote.md") and not os.environ.get("VRL_REMOTE") \
+            and not any(a in ("-h", "--help") for a in args):
+        print("gpu_hours: this is the local machine of a remote-mode workspace: run gpu_hours.py on the "
+              "remote host, through vrl_ssh.sh script", file=sys.stderr)
+        return 2
     while args:
         a = args.pop(0)
         if a in ("-h", "--help"):

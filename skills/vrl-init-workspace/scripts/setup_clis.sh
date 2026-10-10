@@ -22,6 +22,9 @@
 #                hf keeps its login under XDG_CACHE_HOME, which .env sets, so the hf login is refused
 #                while that .env does not exist yet; everything else runs without it.
 #
+# On the local machine of a remote-mode workspace, the one with docs/AGENTS/remote.md, it refuses uv and
+# hf, which belong on the remote host: that machine runs no code.
+#
 # On another host: ssh host 'bash -s -- install --only uv,hf --workspace /abs/path' < setup_clis.sh
 #
 # Everything runs inside main(), so that bash reads the whole script before running it when the
@@ -55,6 +58,14 @@ main() {
 		esac
 	done
 	[ -n "$TOOLS" ] || { err "--only lists no tool"; return 2; }
+	if [ -z "${VRL_REMOTE:-}" ] && { [ -f docs/AGENTS/remote.md ] || [ -f "${workspace:-.}/docs/AGENTS/remote.md" ]; }; then
+		case " $TOOLS " in
+			*" uv "* | *" hf "*)
+				err "This is the local machine of a remote-mode workspace, which runs no code: install uv and hf on the remote host, through vrl_ssh.sh script, and pass --only with the others here."
+				return 2
+				;;
+		esac
+	fi
 	case "$UPGRADE:$cmd" in
 		1:check | 1:login) err "--upgrade goes with install or all"; return 2 ;;
 	esac

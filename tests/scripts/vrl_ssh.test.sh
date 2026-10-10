@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC1091,SC2016,SC2034 # Sourced helpers, literal test strings, and variables used across files.
-# Tests for vrl_ssh.sh, with the fake ssh, mount, and sshfs.
+# Tests for vrl_ssh.sh, with the fake ssh, which runs remote commands here.
 . "$(dirname "$0")/lib.sh"
 export PATH="$FAKES:$PATH" FAKE_SSH_STATE="$TMP_ROOT/state" FAKE_HOME="$TMP_ROOT/home" TMPDIR="$TMP_ROOT/tmp"
 export HOME="$TMP_ROOT/user"
+export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t GIT_CONFIG_NOSYSTEM=1
 mkdir -p "$FAKE_SSH_STATE" "$FAKE_HOME" "$TMPDIR" "$TMP_ROOT/here/docs/AGENTS" "$HOME/.ssh"
 printf 'Include config.d/*\nHost myhpc\n    HostName example.org\nHost my.hpc other.host\n    HostName example.net\n' >"$HOME/.ssh/config"
 mkdir -p "$HOME/.ssh/config.d" && printf 'Host *.cluster !bad.cluster\n    User bob\n' >"$HOME/.ssh/config.d/hpc"
@@ -150,21 +151,154 @@ test_alias_must_match_rules() {
 	run bash "$V" check myhpc; expect_rc 2 && expect_out "must name the remote host"
 }
 
-test_mount_rules() {
+sha() { (sha256sum "$1" 2>/dev/null || shasum -a 256 "$1") | cut -d' ' -f1; }
+# A local workspace in remote mode, with its code, and an empty remote workspace.
+LW="$TMP_ROOT/local"
+RW="$TMP_ROOT/rw/it's ws"
+make_workspace() {
+	[ -d "$LW/.git" ] && return 0
+	mkdir -p "$LW/docs/AGENTS" "$LW/docs/plans" "$RW"
+	(
+		cd "$LW" || exit 1
+		printf '/*\n!/.gitignore\n!/AGENTS.md\n!/docs/\n!/tests/\n/docs/AGENTS/machine.md\n/docs/AGENTS/remote.md\n' >.gitignore
+		printf '| Remote host | `ssh myhpc`: the `Host myhpc` entry |\n' >docs/AGENTS/remote.md
+		echo '# Rules' >AGENTS.md
+		printf '# Plan\n```bash run=a gpus=0 code=none\necho a\n```\n' >docs/plans/2026-10-10-demo.md
+		git init -q -b main . && git add -A && git commit -qm init
+		git init -q -b main main_repo && cd main_repo && echo 'print(1)' >train.py && printf '__pycache__/\n' >.gitignore &&
+			git add -A && git commit -qm code
+	)
+}
+
+test_sync_copies_commits_and_prints_pins() {
 	up
-	cd "$TMP_ROOT/here" || return 1
-	run bash "$V" mount myhpc --workspace "$WS" --mount "$HOME/.ssh"; expect_rc 2 && expect_out "right in the launch directory"
-	(cd "$TMP_ROOT/state" && bash "$V" mount myhpc --workspace "$WS" --mount m) >"$TMP_ROOT/m.out" 2>&1
-	expect grep -q "the one that holds docs/AGENTS" "$TMP_ROOT/m.out"
-	run bash "$V" mount myhpc --workspace "$WS" --mount .claude; expect_rc 2 && expect_out "not hidden"
-	mkdir -p "mnt full" && touch "mnt full/file"
-	run bash "$V" mount myhpc --workspace "$WS" --mount "mnt full"; expect_rc 2 && expect_out "not empty"
-	mkdir -p "mnt one"
-	FAKE_MOUNT_STYLE=linux run bash "$V" mount myhpc --workspace "$WS" --mount "mnt one"; expect_rc 0 && expect_out "is mounted at"
-	FAKE_MOUNT_STYLE=linux run bash "$V" check myhpc --mount "mnt one"; expect_rc 0 && expect_out "is listed"
-	printf 'otherhost:/data on %s (macfuse, nodev)\n' "$TMP_ROOT/here/mnt two" >>"$FAKE_SSH_STATE/mounts"
-	mkdir -p "mnt two"
-	run bash "$V" mount myhpc --workspace "$WS" --mount "mnt two"; expect_rc 1 && expect_out "Something other than an SSHFS mount"
+	make_workspace
+	cd "$LW" || return 1
+	OUT="$( (umask 002; bash "$V" sync myhpc --workspace "$RW" -- . main_repo) 2>&1)"; RC=$?
+	expect_rc 0 && expect_out "synced . code=.@" || return 1
+	expect_out "synced main_repo code=main_repo@$(git -C main_repo rev-parse --short=12 HEAD) diff=clean"
+	expect_out "sha256 docs/plans/2026-10-10-demo.md $(sha docs/plans/2026-10-10-demo.md)"
+	expect [ "$(cat "$RW/main_repo/train.py")" = 'print(1)' ] && expect [ ! -e "$RW/docs/AGENTS/remote.md" ]
+	expect [ "$(ls -l "$RW/docs/plans/2026-10-10-demo.md" | cut -c1-10)" = "-rw-r--r--" ]
+	# A later commit replaces the earlier one, and a deleted file goes; ignored remote files stay.
+	mkdir -p "$RW/main_repo/__pycache__" && touch "$RW/main_repo/__pycache__/x.pyc"
+	(cd main_repo && echo 'print(2)' >train.py && echo x >extra.py && git add -A && git commit -qm two && git rm -q extra.py && git commit -qm three)
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo
+	expect_rc 0 && expect [ "$(cat "$RW/main_repo/train.py")" = 'print(2)' ] && expect [ ! -e "$RW/main_repo/extra.py" ]
+	expect [ -e "$RW/main_repo/__pycache__/x.pyc" ]
+	# The remote host's own pin matches the one sync printed, and names the branch it came from.
+	run bash "$V" script myhpc --workspace "$RW" --no-env -- launch_run.sh --pin main_repo
+	expect_out "code=main_repo@$(git -C main_repo rev-parse --short=12 HEAD) diff=clean"
+	expect [ "$(cat "$RW/main_repo/.git/vrl-sync.branch")" = main ]
+	# The plan file passes the plan form's checks there, with the hash sync printed.
+	printf 'TZ=UTC\n' >"$RW/.env"
+	run bash "$V" script myhpc --workspace "$RW" -- launch_run.sh --plan docs/plans/2026-10-10-demo.md --run a \
+		--plan-sha256 "$(sha docs/plans/2026-10-10-demo.md)" --nohup --no-gpu --machine box --wait 6
+	expect_rc 0 && expect_out "ended with exit code 0"
+}
+
+test_sync_refuses_what_it_must_not_copy_or_overwrite() {
+	up
+	make_workspace
+	cd "$LW" || return 1
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 0 || return 1
+	run bash "$V" sync myhpc --workspace "$RW" -- docs; expect_rc 2
+	run bash "$V" sync myhpc --workspace "$RW" -- ../x; expect_rc 2
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo/sub; expect_rc 2
+	# Only commits travel.
+	echo dirty >>main_repo/train.py
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 3 && expect_out "not committed"
+	git -C main_repo checkout -q train.py
+	echo new >main_repo/new.py
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 3 && expect_out "new.py"
+	rm main_repo/new.py
+	# A change made on the remote host is never overwritten.
+	echo hotfix >>"$RW/main_repo/train.py"
+	(cd main_repo && echo 'print(3)' >train.py && git commit -qam four)
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 3 && expect_out "no sync made"
+	expect grep -q hotfix "$RW/main_repo/train.py"
+	git -C "$RW/main_repo" checkout -q train.py
+	# Nor is the code of a run that is still going, or of a launch in progress.
+	mkdir -p "$RW/logs/x"
+	printf '# command:   python train.py\n# code:      main_repo (main) @ abc (clean)\n# run-id:    0123456789ab\n# session:   PID 99999\n# ---------- stdout + stderr ----------\n' >"$RW/logs/x/a.log"
+	sleep 30 >>"$RW/logs/x/a.log" &
+	writer=$!
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 3 && expect_out "Runs still going use main_repo"
+	kill "$writer"; wait "$writer" 2>/dev/null
+	mkdir "$RW/logs/x/b.log.lock"
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 3 && expect_out "A launch is in progress"
+	rmdir "$RW/logs/x/b.log.lock"
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 0 && expect grep -q 'print(3)' "$RW/main_repo/train.py"
+	# Submodules and Git LFS files never travel.
+	(cd main_repo && mkdir sub && git update-index --add --cacheinfo "160000,$(git rev-parse HEAD),sub" && git commit -qm sub)
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 3 && expect_out "submodules"
+	(cd main_repo && git rm -q --cached sub && rmdir sub && printf '*.bin filter=lfs\n' >.gitattributes && echo x >a.bin && git add -A && git commit -qm lfs)
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 3 && expect_out "LFS"
+	(cd main_repo && git rm -q .gitattributes a.bin && git commit -qm nolfs)
+	# A run's traces here are reported.
+	mkdir -p main_repo/__pycache__
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo; expect_rc 0 && expect_out "as if code ran on this machine"
+	rmdir main_repo/__pycache__
+}
+
+test_sync_worktree_shares_its_owner_mirror() {
+	up
+	make_workspace
+	cd "$LW" || return 1
+	git -C main_repo worktree add -q -b feat ../worktrees/feat
+	(cd worktrees/feat && echo feat >feat.py && git add feat.py && git commit -qm feat)
+	run bash "$V" sync myhpc --workspace "$RW" -- main_repo worktrees/feat
+	expect_rc 0 && expect_out "synced worktrees/feat code=worktrees/feat@$(git -C worktrees/feat rev-parse --short=12 HEAD) diff=clean" || return 1
+	expect [ -f "$RW/worktrees/feat/feat.py" ] && expect [ ! -e "$RW/main_repo/feat.py" ]
+	expect [ "$(cd "$RW/worktrees/feat" && cd "$(git rev-parse --git-common-dir)" && pwd -P)" = "$(cd "$RW/main_repo/.git" && pwd -P)" ]
+	(cd worktrees/feat && echo two >feat.py && git commit -qam two)
+	run bash "$V" sync myhpc --workspace "$RW" -- worktrees/feat
+	expect_rc 0 && expect grep -q two "$RW/worktrees/feat/feat.py"
+}
+
+test_read_prints_text_under_results_only() {
+	up
+	mkdir -p "$RW/logs/r" "$RW/tmp"
+	printf 'one\ntwo\nthree\n' >"$RW/logs/r/x.log"
+	run bash "$V" read myhpc --workspace "$RW" --lines 2 -- logs/r/x.log
+	expect_rc 0 && expect_out "two
+three" && expect_no_out "one"
+	run bash "$V" read myhpc --workspace "$RW" -- logs/r; expect_rc 0 && expect_out "x.log"
+	run bash "$V" read myhpc --workspace "$RW" -- .env; expect_rc 2
+	run bash "$V" read myhpc --workspace "$RW" -- logs/../.env; expect_rc 2
+	run bash "$V" read myhpc --workspace "$RW" --lines 0 -- logs/r/x.log; expect_rc 2
+	printf 'A=1\n' >"$RW/tmp/.env.old"
+	run bash "$V" read myhpc --workspace "$RW" -- tmp/.env.old; expect_rc 3 && expect_out "never prints a .env"
+	printf 'a\000b\n' >"$RW/logs/r/bin.log"
+	run bash "$V" read myhpc --workspace "$RW" -- logs/r/bin.log; expect_rc 3 && expect_out "not a text file"
+	ln -s /etc "$RW/logs/out"
+	run bash "$V" read myhpc --workspace "$RW" -- logs/out/hosts; expect_rc 3 && expect_out "leads outside"
+	run bash "$V" read myhpc --workspace "$RW" -- logs/r/none.log; expect_rc 3 && expect_out "no such file"
+}
+
+test_fetch_copies_figures_only() {
+	up
+	make_workspace
+	cd "$LW" || return 1
+	mkdir -p "$RW/runs/x/figures"
+	printf '\211PNG\r\n\032\nrest of the image\000\001' >"$RW/runs/x/figures/a.png"
+	FAKE_SSH_BANNER="Welcome to the cluster" run bash "$V" fetch myhpc --workspace "$RW" -- runs/x/figures/a.png
+	expect_rc 0 && expect cmp -s "$RW/runs/x/figures/a.png" tmp/fetched/runs/x/figures/a.png || return 1
+	expect [ "$(ls -l tmp/fetched/runs/x/figures/a.png | cut -c1-10)" = "-rw-------" ]
+	printf 'not an image' >"$RW/runs/x/figures/b.png"
+	run bash "$V" fetch myhpc --workspace "$RW" -- runs/x/figures/b.png; expect_rc 3 && expect_out "not the png file"
+	run bash "$V" fetch myhpc --workspace "$RW" -- runs/x/metrics.csv; expect_rc 2
+	run bash "$V" fetch myhpc --workspace "$RW" -- tmp/fetched/a.png; expect_rc 2
+	run bash "$V" fetch myhpc --workspace "$RW" -- data/a.png; expect_rc 2
+	ln -s a.png "$RW/runs/x/figures/c.png"
+	run bash "$V" fetch myhpc --workspace "$RW" -- runs/x/figures/c.png; expect_rc 3 && expect_out "not a regular file"
+	{ printf '\211PNG\r\n\032\n'; head -c 1100000 /dev/zero; } >"$RW/runs/x/figures/big.png"
+	run bash "$V" fetch myhpc --workspace "$RW" --max-mb 1 -- runs/x/figures/big.png; expect_rc 3 && expect_out "larger than"
+	mkdir -p "$RW/tmp/lock" && printf 'version = 1\n' >"$RW/tmp/lock/uv.lock"
+	run bash "$V" fetch myhpc --workspace "$RW" -- tmp/lock/uv.lock; expect_rc 0 && expect grep -q 'version = 1' tmp/fetched/tmp/lock/uv.lock
+	mv tmp/fetched "$TMP_ROOT/fetched-away" && ln -s "$TMP_ROOT/fetched-away" tmp/fetched
+	run bash "$V" fetch myhpc --workspace "$RW" -- runs/x/figures/a.png; expect_rc 3 && expect_out "symlink"
+	rm tmp/fetched
 }
 
 test_resolve() {

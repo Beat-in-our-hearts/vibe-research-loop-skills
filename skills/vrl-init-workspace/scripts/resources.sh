@@ -65,6 +65,11 @@ main() {
 		esac
 		shift
 	done
+	# The local machine of a remote-mode workspace runs no code; the remote host sets VRL_REMOTE.
+	if [ -f docs/AGENTS/remote.md ] && [ -z "${VRL_REMOTE:-}" ]; then
+		err "This is the local machine of a remote-mode workspace: run resources.sh on the remote host, through vrl_ssh.sh script."
+		return 2
+	fi
 	is_uint "$free_mib" && is_uint "$max_util" && is_uint "$samples" && is_uint "$limit" &&
 		[ "$samples" -ge 1 ] && [ "$samples" -le 5 ] ||
 		{ err "--free-mib, --max-util, --samples (1 to 5), and --limit take whole numbers"; return 2; }
