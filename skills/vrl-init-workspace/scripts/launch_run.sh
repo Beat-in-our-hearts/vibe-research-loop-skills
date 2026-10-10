@@ -12,45 +12,59 @@
 usage() {
 	cat <<'EOF'
 Usage, from the workspace root:
-  launch_run.sh --plan docs/plans/<date>-<name>.md --run <run> --plan-sha256 <hash> <options>
-  launch_run.sh --purpose '<what it does>' <options> -- '<command>'
+  launch_run.sh --plan docs/plans/<date>-<ID>.md --run <run> --plan-sha256 <hash> <options>
+  launch_run.sh --purpose '<what it does>' --log <log> --code <checkout|none> <options> -- '<command>'
+  launch_run.sh --pin <checkout|none>
 
-The first form launches a run of an approved plan: its command is the fenced block of the plan file
-whose info string holds `run=<run>`, such as ```bash run=baseline, and the plan file must still have
-the SHA-256 recorded when the plan was approved. Use it whenever a plan exists; it is the only form
-to allow without a prompt, since it cannot run a command the plan does not hold. The second form
-runs any command, such as a smoke run or a data job, and asks for the user's review like any command.
+The plan form launches a run of an approved plan. Its command is the fenced block of the plan file
+whose info string holds `run=<run>`, which also pins what the run needs:
+    ```bash run=<run> gpus=<count> code=<checkout>@<commit> diff=<clean|hash> env=<name>
+`--pin <checkout>` prints the `code=... diff=...` words for the checkout as it is now; write them
+into each block when the plan goes to approval. The plan form refuses the run unless the plan file
+still has the given SHA-256, the checkout is still at that commit with that diff, and --gpus names
+that many GPUs. Its log is logs/<date>-<ID>/<run>.log and its outputs runs/<date>-<ID>/<run>/.
 
-Options, required:
-  --log FILE          The log, such as logs/<date>-<name>/<run>.log; its folder is created if missing.
-  --tmux SESSION      Run in a new window of this tmux session, named after the log; or
-  --nohup             run in the background as a session of its own, outside any terminal.
-  --gpus IDS          The GPUs to use, such as 0,1, exported as CUDA_VISIBLE_DEVICES in the PCI order
-                      that nvidia-smi uses; or
-  --no-gpu            for a command that uses no GPU: CUDA_VISIBLE_DEVICES is set empty.
-  --machine NAME      The machine's short name in docs/AGENTS/machine.md.
-  --code DIR|none     The checkout the command runs from, such as main_repo or worktrees/<branch>.
+The free form runs any other command, such as a smoke run or a data job.
 
-Options, optional:
-  --purpose TEXT      The header's purpose line; in the plan form it defaults to the plan and the run.
-  --outputs DIR       The run's output folder, created if missing; required when the checkout is
-                      dirty, since its diff is saved there as git_diff.patch, readable by you only.
-  --env NAME          The Python environment (default: the active virtual or conda environment).
-  --restart           Go on when the log's last run has no footer and its process is gone, as after
-                      a crash: a footer that closes it at the log's last write goes in first.
-  --resume            Go on when the log's last run finished with exit code 0, to continue it in
-                      the same outputs. Without it, a finished run is refused: give a rerun a new run
-                      name instead, since a finished run is never overwritten.
-  --new-session       With --tmux: create the session if it does not exist.
-  --wait S            Wait up to S seconds (default 3) before reporting; for a smoke run, wait for
-                      it to end and report its exit code.
+Either way the command runs with bash from the workspace root, not from its checkout, with no input
+and with these set: the variables of .env, read as literal NAME=value lines, never run; PATH with
+~/.local/bin first; CUDA_VISIBLE_DEVICES and CUDA_DEVICE_ORDER=PCI_BUS_ID, so that it sees only its
+GPUs, numbered as nvidia-smi numbers them; PYTHONUNBUFFERED=1; and VRL_OUTPUTS, the absolute path
+of its outputs folder, when it has one.
 
-It refuses to run on a machine with a Slurm scheduler, a command that sets CUDA_VISIBLE_DEVICES
-itself, a command that seems to hold a secret, and a second copy of a run that is still alive.
-The header holds a run-id that only the footer repeats, so a program's output cannot fake either.
+Options:
+  --tmux SESSION     Run in a new window of this tmux session, named after the log; or
+  --nohup            run in the background as a session of its own, outside any terminal.
+  --gpus IDS         The GPUs to use, such as 0,1; none of them may have a process on it. Or
+  --no-gpu           for a command that uses no GPU: CUDA_VISIBLE_DEVICES is set empty.
+  --machine NAME     The machine's short name in docs/AGENTS/machine.md. Required.
+  --purpose TEXT     The header's purpose line; in the plan form it defaults to the plan and the run.
+  --log FILE         Free form: the log, such as logs/<date>-<task>.log.
+  --code DIR|none    Free form: the checkout the command uses, such as main_repo or worktrees/<branch>;
+                     the header names its branch and commit, and whether it is dirty.
+  --outputs DIR      Free form: the run's output folder, created if missing; required when the
+                     checkout is dirty, since the diff that rebuilds it is saved there as
+                     git_diff.patch, readable by you only.
+  --env NAME         The Python environment the header names (default: the block's env=, or the
+                     active virtual or conda environment).
+  --restart          Start again a run whose last start ended with a nonzero or unknown exit code, or
+                     crashed with no footer and no process left: a crashed one is first closed with a
+                     footer at the log's last write.
+  --resume           Start again a run whose last start finished with exit code 0, to continue it.
+                     Without one of the two, a log whose last run has ended is refused: give a rerun
+                     a new run name instead, since a finished run is never overwritten.
+  --new-session      With --tmux: create the session if it does not exist, from this shell.
+  --wait S           Wait up to S seconds (default 3) before reporting the status; a smoke run that
+                     ends within them reports its exit code.
 
-Prints the log, run-id, session, code, and status. Exit codes: 0 running, or ended with exit code 0
-within the wait; 1 ended with another exit code, or did not start; 2 bad arguments; 3 refused.
+It refuses to run on a machine with a scheduler (Slurm, PBS, LSF, or SGE), a command that sets
+CUDA_VISIBLE_DEVICES itself, a command that seems to hold a secret, and a second copy of a live run.
+A run is alive while one of its processes writes its log. The header holds a run-id that only the
+footer repeats, so a program's output cannot fake either.
+
+It prints the log, run-id, session, start time, and code as soon as the run starts, then the status.
+Exit codes: 0 running, or ended with exit code 0 within the wait; 1 ended with another exit code, or
+did not start; 2 bad arguments, or the tmux session is missing; 3 refused.
 EOF
 }
 
@@ -59,32 +73,44 @@ main() {
 	umask 077
 
 	local log="" purpose="" session="" nohup=0 gpus="" no_gpu=0 machine="" code="" outputs="" envname=""
-	local restart=0 resume=0 new_session=0 wait_s=3 plan="" plan_given=0 run="" plan_sha=""
+	local restart=0 resume=0 new_session=0 wait_s=3 plan="" plan_given=0 run="" plan_sha="" pin="" pin_given=0
+	local log_given=0 outputs_given=0 code_given=0
 	while [ $# -gt 0 ]; do
 		case "$1" in
-			--log) log="${2:-}"; shift ;;
+			--log) log="${2:-}"; log_given=1; shift ;;
 			--purpose) purpose="${2:-}"; shift ;;
 			--tmux) session="${2:-}"; shift ;;
 			--nohup) nohup=1 ;;
 			--gpus) gpus="${2:-}"; shift ;;
 			--no-gpu) no_gpu=1 ;;
 			--machine) machine="${2:-}"; shift ;;
-			--code) code="${2:-}"; shift ;;
-			--outputs) outputs="${2:-}"; shift ;;
+			--code) code="${2:-}"; code_given=1; shift ;;
+			--outputs) outputs="${2:-}"; outputs_given=1; shift ;;
 			--env) envname="${2:-}"; shift ;;
 			--restart) restart=1 ;;
 			--resume) resume=1 ;;
 			--new-session) new_session=1 ;;
-			--wait) wait_s="${2:-}"; shift ;;
+			--wait)
+				wait_s="${2:-}"
+				case "$wait_s" in "" | *[!0-9]*) err "--wait takes whole seconds"; return 2 ;; esac
+				shift
+				;;
 			--plan) plan="${2:-}"; plan_given=$((plan_given + 1)); shift ;;
 			--run) run="${2:-}"; shift ;;
 			--plan-sha256) plan_sha="${2:-}"; shift ;;
+			--pin) pin="${2:-}"; pin_given=1; shift ;;
 			-h | --help) usage; return 0 ;;
 			--) shift; break ;;
 			*) err "Unknown argument: $1"; return 2 ;;
 		esac
 		shift
 	done
+
+	if [ "$pin_given" = 1 ]; then
+		[ -n "$pin" ] || { err "--pin takes a checkout, or none"; return 2; }
+		print_pin "$pin"
+		return
+	fi
 
 	# Arguments.
 	local cmd=""
@@ -93,14 +119,17 @@ main() {
 		[ $# -eq 0 ] || { err "The plan form takes no command after --: the command comes from the plan"; return 2; }
 		[ -n "$run" ] || { err "--plan needs --run"; return 2; }
 		[ -n "$plan_sha" ] || { err "--plan needs --plan-sha256, the hash recorded when the plan was approved"; return 2; }
+		[ "$log_given$outputs_given$code_given" = 000 ] ||
+			{ err "The plan form takes its log, outputs, and checkout from the plan: drop --log, --outputs, and --code"; return 2; }
 	else
 		[ -z "$run$plan_sha" ] || { err "--run and --plan-sha256 go with --plan"; return 2; }
 		[ $# -eq 1 ] || { err "Give the command as one quoted string after --"; return 2; }
 		cmd="$1"
 		[ -n "$cmd" ] || { err "The command is empty"; return 2; }
 		[ -n "$purpose" ] || { err "--purpose is required"; return 2; }
+		[ -n "$log" ] || { err "--log is required"; return 2; }
+		[ -n "$code" ] || { err "--code is required: the checkout, or none"; return 2; }
 	fi
-	[ -n "$log" ] || { err "--log is required"; return 2; }
 	case "${session:+tmux}$nohup" in
 		tmux0 | 1) ;;
 		*) err "Choose one of --tmux <session> and --nohup"; return 2 ;;
@@ -112,28 +141,41 @@ main() {
 	case "$gpus" in
 		*[!0-9,]* | ,* | *, | *,,*) err "--gpus takes ids such as 0 or 0,1"; return 2 ;;
 	esac
+	if [ -n "$gpus" ] && [ "$(printf '%s\n' "$gpus" | tr ',' '\n' | sort -u | wc -l | tr -d ' ')" != "$(printf '%s\n' "$gpus" | tr ',' '\n' | wc -l | tr -d ' ')" ]; then
+		err "--gpus names a GPU twice"
+		return 2
+	fi
 	[ -n "$machine" ] || { err "--machine is required: the short name in docs/AGENTS/machine.md"; return 2; }
-	[ -n "$code" ] || { err "--code is required: the checkout, or none"; return 2; }
 	case "$session" in
 		*[!A-Za-z0-9_-]*) err "A tmux session name holds only letters, digits, - and _"; return 2 ;;
 	esac
-	case "$wait_s" in "" | *[!0-9]*) err "--wait takes whole seconds"; return 2 ;; esac
 	local v
 	for v in "$purpose" "$machine" "$code" "$outputs" "$envname" "$log" "$run"; do
 		case "$v" in *"$NL"* | *"$CR"*) err "Options other than the command hold one line each"; return 2 ;; esac
 	done
 
 	# Refusals.
-	if [ -n "${SLURM_JOB_ID:-}" ] || command -v sbatch >/dev/null 2>&1; then
-		err "This machine has a Slurm scheduler: launch through it as docs/AGENTS/machine.md says, by hand."
+	if scheduler_here; then
+		err "This machine has a job scheduler: launch through it as docs/AGENTS/machine.md says, by hand."
 		return 3
 	fi
 	[ -f .env ] || { err "Run this from the workspace root: there is no .env here"; return 2; }
 	local ws
 	ws="$(pwd -P)"
-	if [ -n "$plan" ]; then
-		cmd="$(plan_command "$ws" "$plan" "$run" "$plan_sha")" || return 3
-		[ -n "$purpose" ] || purpose="$(basename "$plan" .md) / $run: run $run of the approved plan"
+	if [ "$plan_given" -gt 0 ]; then
+		plan_load "$ws" "$plan" "$run" "$plan_sha" || return 3
+		cmd="$PLAN_CMD"
+		log="logs/$PLAN_BASE/$run.log"
+		outputs="runs/$PLAN_BASE/$run/"
+		code="$PLAN_CODE"
+		[ -n "$purpose" ] || purpose="$PLAN_BASE / $run: run $run of the approved plan"
+		[ -n "$envname" ] || envname="$PLAN_ENV"
+		if [ "$PLAN_GPUS" = 0 ]; then
+			[ "$no_gpu" = 1 ] || { err "The plan gives run $run no GPU: pass --no-gpu"; return 3; }
+		elif [ "$no_gpu" = 1 ] || [ "$(printf '%s\n' "$gpus" | tr ',' '\n' | wc -l | tr -d ' ')" != "$PLAN_GPUS" ]; then
+			err "The plan gives run $run $PLAN_GPUS GPUs: pass that many ids with --gpus"
+			return 3
+		fi
 	fi
 	if printf '%s' "$cmd" | grep -Eq '(^|[^A-Za-z0-9_])CUDA_VISIBLE_DEVICES='; then
 		err "The command sets CUDA_VISIBLE_DEVICES itself: pass the GPUs with --gpus instead."
@@ -150,13 +192,19 @@ main() {
 	if [ "$code" != none ]; then
 		git -C "$code" rev-parse --git-dir >/dev/null 2>&1 || { err "Not a git checkout: $code"; return 2; }
 	fi
+	if [ "$plan_given" -gt 0 ] && [ "$code" != none ]; then
+		local now_pin
+		now_pin="$(print_pin "$code")" || return 1
+		if [ "$now_pin" != "code=$code@$PLAN_COMMIT diff=$PLAN_DIFF" ] && ! pin_matches "$now_pin" "$code" "$PLAN_COMMIT" "$PLAN_DIFF"; then
+			err "The checkout $code changed since the plan was approved: it is now $now_pin. A change to the code or a config needs a new approval."
+			return 3
+		fi
+	fi
+	if [ -n "$gpus" ]; then
+		gpus_busy "$gpus" || return 3
+	fi
 
-	set -a
-	set +u
-	# shellcheck disable=SC1091
-	. ./.env
-	set -u
-	set +a
+	load_env_file ./.env
 
 	local log_path="$log"
 	case "$log_path" in /*) ;; *) log_path="$ws/$log_path" ;; esac
@@ -175,13 +223,13 @@ main() {
 	fi
 	trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 
-	# Never start a second copy; never overwrite a finished run.
+	# Never start a second copy; never overwrite a run that ended without being asked to.
 	if [ -n "$session" ]; then
 		if ! tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -Fxq -- "$session"; then
 			if [ "$new_session" = 1 ]; then
 				tmux new-session -d -s "$session" -c "$ws" || { err "Could not create the tmux session $session"; return 1; }
 			else
-				err "The tmux session $session does not exist. Start it as docs/AGENTS/machine.md says, or pass --new-session."
+				err "The tmux session $session does not exist: start it as docs/AGENTS/machine.md says, then launch again."
 				return 2
 			fi
 		fi
@@ -202,16 +250,22 @@ main() {
 					return 3
 				fi
 				[ "$restart" = 1 ] || {
-					err "The log's last run has no footer and its process is gone: it crashed or was killed. Pass --restart to start it again."
+					err "The log's last run has no footer and no process: it crashed or was killed. Pass --restart to start it again."
 					return 3
 				}
 				close_dead_run "$log_path" "$last_id"
 				;;
 			finished0*)
-				if [ "$resume" = 0 ]; then
+				[ "$resume" = 1 ] || {
 					err "The log's last run finished with exit code 0: give a rerun a new run name, or pass --resume to continue it."
 					return 3
-				fi
+				}
+				;;
+			finished*)
+				[ "$restart" = 1 ] || {
+					err "The log's last run ended with exit code ${state#finished}: pass --restart to start it again, once its cause is fixed."
+					return 3
+				}
 				;;
 		esac
 	fi
@@ -245,16 +299,17 @@ main() {
 	run_id="$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')"
 	local header
 	header="$(printf '# command:   %s\n' "$cmd" | sed '2,$s/^/#            /')"
-	[ -z "$plan" ] || header="$header$NL# plan:      $plan (sha256 $plan_sha), run $run"
+	[ "$plan_given" = 0 ] || header="$header$NL# plan:      $plan (sha256 $plan_sha), run $run"
 	header="$header$NL$(printf '# purpose:   %s\n# code:      %s\n# outputs:   %s\n# resources: %s\n# run-id:    %s' \
 		"$purpose" "$code_line" "${outputs:-none}" "$resources" "$run_id")"
 
-	local where=""
+	local where="" exports
 	[ -z "$session" ] || where="$session:$window, "
-	local venv_lines=""
-	if [ -n "${VIRTUAL_ENV:-}" ]; then
-		venv_lines="export VIRTUAL_ENV=$(sq "$VIRTUAL_ENV") PATH=$(sq "$VIRTUAL_ENV/bin"):\"\$PATH\""
+	exports="export PATH=$(sq "$HOME/.local/bin:$PATH") CUDA_VISIBLE_DEVICES=$(sq "$gpus") CUDA_DEVICE_ORDER=PCI_BUS_ID PYTHONUNBUFFERED=1"
+	if [ -n "$outputs" ]; then
+		case "$outputs" in /*) exports="$exports VRL_OUTPUTS=$(sq "$outputs")" ;; *) exports="$exports VRL_OUTPUTS=$(sq "$ws/${outputs%/}")" ;; esac
 	fi
+	[ -z "${VIRTUAL_ENV:-}" ] || exports="$exports VIRTUAL_ENV=$(sq "$VIRTUAL_ENV")"
 
 	# The shell that runs the command writes the header, with its own PID, and the footer. It runs from a
 	# file, so that no shell of the user's quotes it. The command runs in a session of its own, with no
@@ -272,9 +327,9 @@ rm -f -- $(sq "$runner")
 umask 077
 cd $(sq "$ws") || exit 97
 exec 2>>$(sq "$log_path")
-set -a; . ./.env; set +a
-export CUDA_VISIBLE_DEVICES=$(sq "$gpus") CUDA_DEVICE_ORDER=PCI_BUS_ID PYTHONUNBUFFERED=1
-$venv_lines
+$(declare -f load_env_file)
+load_env_file ./.env
+$exports
 unset ANTHROPIC_API_KEY OPENAI_API_KEY GH_TOKEN GITHUB_TOKEN NOTION_TOKEN NOTION_API_KEY
 ts() { local z; z=\$(date +%z); printf '%s %s:%s' "\$(date '+%Y-%m-%d %H:%M:%S')" "\${z%??}" "\${z#???}"; }
 stop=0 child=
@@ -319,7 +374,7 @@ RUNNER
 		nohup bash "$runner" >/dev/null 2>&1 </dev/null &
 	fi
 
-	# Wait for the header, then up to --wait seconds for the end.
+	# Report the run as soon as its header is there, then wait up to --wait seconds for its end.
 	local waited=0
 	while [ "$waited" -lt 5 ] && ! grep -Fq "# run-id:    $run_id" "$log_path" 2>/dev/null; do
 		sleep 1
@@ -330,18 +385,19 @@ RUNNER
 		return 1
 	fi
 	rmdir "$LOCK" 2>/dev/null
+	printf 'log       %s\n' "$log"
+	printf 'run-id    %s\n' "$run_id"
+	printf 'session   %s\n' "$(grep -A1 -F "# run-id:    $run_id" "$log_path" | sed -n 's/^# session: *//p')"
+	printf 'started   %s\n' "$(grep -A2 -F "# run-id:    $run_id" "$log_path" | sed -n 's/^# started: *//p')"
+	printf 'code      %s\n' "$code_line"
+	[ -z "$patch" ] || printf 'diff      %s\n' "$patch"
 	waited=0
 	while [ "$waited" -lt "$wait_s" ] && ! grep -Fq -- "# ---------- end $run_id ----------" "$log_path"; do
 		sleep 1
 		waited=$((waited + 1))
 	done
-	printf 'log       %s\n' "$log"
-	printf 'run-id    %s\n' "$run_id"
-	printf 'session   %s\n' "$(grep -A1 -F "# run-id:    $run_id" "$log_path" | sed -n 's/^# session: *//p')"
-	printf 'code      %s\n' "$code_line"
-	[ -z "$patch" ] || printf 'diff      %s\n' "$patch"
 	if ! grep -Fq -- "# ---------- end $run_id ----------" "$log_path"; then
-		printf 'status    running after %s s\n' "$wait_s"
+		printf 'status    running after %s s; read its footer later\n' "$wait_s"
 		return 0
 	fi
 	local rc
@@ -364,6 +420,38 @@ sq() {
 	printf "'%s'" "$s"
 }
 
+# Export the variables of an .env file without running it: one literal NAME=value per line, quotes
+# around the value dropped. Names that could make a program run other code are skipped.
+load_env_file() {
+	local line name value
+	while IFS= read -r line || [ -n "$line" ]; do
+		line="${line%$'\r'}"
+		case "$line" in "" | "#"*) continue ;; esac
+		name="${line%%=*}"
+		case "$name" in
+			"$line" | "" | [0-9]* | *[!A-Za-z0-9_]*)
+				printf 'launch_run: .env: skipped a line that is not NAME=value\n' >&2
+				continue
+				;;
+			LD_* | DYLD_* | BASH_ENV | ENV | PATH | IFS | PS4 | PROMPT_COMMAND | SHELLOPTS | BASHOPTS | PYTHONSTARTUP | PERL5OPT | NODE_OPTIONS)
+				printf 'launch_run: .env: skipped %s, which could make a program run other code\n' "$name" >&2
+				continue
+				;;
+		esac
+		value="${line#*=}"
+		case "$value" in
+			\"*\") value="${value#\"}"; value="${value%\"}" ;;
+			\'*\') value="${value#\'}"; value="${value%\'}" ;;
+		esac
+		export "$name=$value"
+	done <"$1"
+}
+
+scheduler_here() {
+	[ -n "${SLURM_JOB_ID:-}${PBS_JOBID:-}${LSB_JOBID:-}" ] || { [ -n "${JOB_ID:-}" ] && [ -n "${SGE_ROOT:-}" ]; } ||
+		command -v sbatch >/dev/null 2>&1 || command -v qsub >/dev/null 2>&1 || command -v bsub >/dev/null 2>&1
+}
+
 # git without the repository's own hooks, fsmonitor, or external diff tools.
 git_safe() {
 	local dir="$1"
@@ -371,32 +459,86 @@ git_safe() {
 	git -C "$dir" -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.quotepath=off -c color.ui=false "$@"
 }
 
-
 sha256_of() {
 	if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
 	elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
 	else openssl dgst -sha256 "$1" | sed 's/.*= //'; fi
 }
 
-# The command of one run in an approved plan file, after checking where the file is and its hash.
-plan_command() {
-	local ws="$1" plan="$2" run="$3" want="$4" real plans got blocks rc
+# What makes the checkout differ from its commit, untracked files and binaries included, as a patch
+# that `git apply` on the commit turns back into the checkout.
+diff_content() {
+	local code="$1" f
+	git_safe "$code" diff --no-ext-diff --no-textconv --binary --src-prefix=a/ --dst-prefix=b/ HEAD
+	git_safe "$code" ls-files -o --exclude-standard -z | while IFS= read -r -d '' f; do
+		(cd "$code" && git -c core.fsmonitor= -c core.hooksPath=/dev/null -c color.ui=false \
+			diff --no-index --no-ext-diff --no-textconv --binary --src-prefix=a/ --dst-prefix=b/ -- /dev/null "$f")
+	done
+	# `git diff --no-index` exits 1 whenever the files differ, which they always do here.
+	return 0
+}
+
+# The words that pin a checkout: `code=<checkout>@<commit> diff=<clean or the diff's hash>`.
+print_pin() {
+	local code="$1" commit tmp hash
+	if [ "$code" = none ]; then
+		printf 'code=none\n'
+		return 0
+	fi
+	commit="$(git_safe "$code" rev-parse --short=12 HEAD 2>/dev/null)" || { err "Not a git checkout: $code"; return 1; }
+	if [ -z "$(git_safe "$code" status --porcelain 2>/dev/null)" ]; then
+		printf 'code=%s@%s diff=clean\n' "$code" "$commit"
+		return 0
+	fi
+	tmp="$(mktemp "${TMPDIR:-/tmp}/vrl-pin.XXXXXX")" || return 1
+	diff_content "$code" >"$tmp"
+	hash="$(sha256_of "$tmp" | cut -c1-12)"
+	rm -f "$tmp"
+	printf 'code=%s@%s diff=%s\n' "$code" "$commit" "$hash"
+}
+
+# Whether a pin taken now matches the plan's, allowing a longer or shorter commit prefix.
+pin_matches() {
+	local now="$1" code="$2" want_commit="$3" want_diff="$4" got_commit got_diff
+	got_commit="$(printf '%s' "$now" | sed -n 's/^code=[^@]*@\([0-9a-f]*\) .*/\1/p')"
+	got_diff="$(printf '%s' "$now" | sed -n 's/.* diff=\(.*\)$/\1/p')"
+	[ -n "$got_commit" ] && [ "$got_diff" = "$want_diff" ] || return 1
+	case "$got_commit" in "$want_commit"*) return 0 ;; esac
+	case "$want_commit" in "$got_commit"*) return 0 ;; esac
+	return 1
+}
+
+# Load one run of an approved plan file into PLAN_CMD, PLAN_GPUS, PLAN_CODE, PLAN_COMMIT, PLAN_DIFF,
+# PLAN_ENV, and PLAN_BASE, after checking where the file is, who may write it, and its hash. The file
+# is read once, into a private copy, which is both hashed and parsed.
+plan_load() {
+	local ws="$1" plan="$2" run="$3" want="$4" real plans copy got parsed info word
 	case "$run" in "" | *[!A-Za-z0-9_.-]*) err "A run name holds only letters, digits, ., - and _"; return 1 ;; esac
 	[ -f "$plan" ] && [ ! -L "$plan" ] || { err "No such plan file, or it is a symlink: $plan"; return 1; }
-	real="$(cd "$(dirname "$plan")" && pwd -P)/$(basename "$plan")"
 	plans="$(cd "$ws/docs/plans" 2>/dev/null && pwd -P)" || { err "This workspace has no docs/plans/"; return 1; }
-	case "$real" in
-		"$plans/"*) ;;
-		*) err "The plan file must be under docs/plans/ of this workspace: $plan"; return 1 ;;
+	real="$(cd "$(dirname "$plan")" && pwd -P)/$(basename "$plan")"
+	[ "$(dirname "$real")" = "$plans" ] || { err "The plan file must sit directly in docs/plans/ of this workspace: $plan"; return 1; }
+	case "$(basename "$real")" in
+		[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.md) ;;
+		*) err "A plan file is named <date>-<ID>.md: $plan"; return 1 ;;
 	esac
-	got="$(sha256_of "$real")"
+	[ -O "$real" ] || { err "The plan file is not yours: $plan"; return 1; }
+	if [ -n "$(find "$real" \( -perm -020 -o -perm -002 \) -print 2>/dev/null)" ]; then
+		err "Others may write the plan file: $plan. Make it writable by you only."
+		return 1
+	fi
+	copy="$(mktemp "${TMPDIR:-/tmp}/vrl-plan.XXXXXX")" || return 1
+	cp "$real" "$copy" || { rm -f "$copy"; return 1; }
+	got="$(sha256_of "$copy")"
 	if [ "$(printf '%s' "$got" | tr 'A-F' 'a-f')" != "$(printf '%s' "$want" | tr 'A-F' 'a-f')" ]; then
-		err "The plan file changed since it was approved: its SHA-256 is $got, not $want. A changed plan needs a new approval."
+		rm -f "$copy"
+		err "The plan file does not have the SHA-256 recorded at approval: it changed, or the hash is wrong. A changed plan needs a new approval."
 		return 1
 	fi
 	# A block opens with a fence of three or more backticks or tildes whose info string holds the word
-	# run=<run>, and closes only at a line that is a fence of the same character, at least as long.
-	blocks="$(tr -d '\r' <"$real" | awk -v run="$run" '
+	# run=<run>, and closes only at a line that is a fence of the same character, at least as long. The
+	# first output line is the info string.
+	parsed="$(tr -d '\r' <"$copy" | awk -v run="$run" '
 		function fence(line,   m) {
 			if (match(line, /^ ? ? ?(````*|~~~~*)/)) { m = substr(line, RSTART, RLENGTH); sub(/^ */, "", m); return m }
 			return ""
@@ -413,23 +555,43 @@ plan_command() {
 				n = split(info, words, /[ \t]+/)
 				hit = 0
 				for (i = 1; i <= n; i++) if (words[i] == "run=" run) hit = 1
-				if (hit) { inside = 1; found++; ch = substr(f, 1, 1); len = length(f); next }
+				if (hit) { inside = 1; found++; ch = substr(f, 1, 1); len = length(f); print info; next }
 			}
 		}
 		END { if (inside) exit 5; if (found != 1) exit (found == 0 ? 3 : 4) }
 	')"
-	rc=$?
-	case $rc in
+	case $? in
 		0) ;;
-		3) err "The plan has no block for run $run: a fenced block whose info string holds run=$run"; return 1 ;;
-		5) err "The plan's block for run $run never closes"; return 1 ;;
-		*) err "The plan has more than one block for run $run"; return 1 ;;
+		3) rm -f "$copy"; err "The plan has no block for run $run: a fenced block whose info string holds run=$run"; return 1 ;;
+		5) rm -f "$copy"; err "The plan's block for run $run never closes"; return 1 ;;
+		*) rm -f "$copy"; err "The plan has more than one block for run $run"; return 1 ;;
 	esac
-	[ -n "$blocks" ] || { err "The plan's block for run $run is empty"; return 1; }
-	printf '%s' "$blocks"
+	rm -f "$copy"
+	info="$(printf '%s\n' "$parsed" | head -n 1)"
+	PLAN_CMD="$(printf '%s\n' "$parsed" | sed '1d')"
+	PLAN_GPUS="" PLAN_CODE="" PLAN_COMMIT="" PLAN_DIFF="" PLAN_ENV=""
+	PLAN_BASE="$(basename "$real" .md)"
+	for word in $info; do
+		case "$word" in
+			gpus=*) PLAN_GPUS="${word#gpus=}" ;;
+			code=none) PLAN_CODE=none ;;
+			code=*@*) PLAN_CODE="${word#code=}"; PLAN_COMMIT="${PLAN_CODE##*@}"; PLAN_CODE="${PLAN_CODE%@*}" ;;
+			diff=*) PLAN_DIFF="${word#diff=}" ;;
+			env=*) PLAN_ENV="${word#env=}" ;;
+		esac
+	done
+	[ -n "$(printf '%s' "$PLAN_CMD" | tr -d '[:space:]')" ] || { err "The plan's block for run $run is empty"; return 1; }
+	case "$PLAN_GPUS" in "" | *[!0-9]*) err "The block for run $run needs gpus=<count>"; return 1 ;; esac
+	[ -n "$PLAN_CODE" ] || { err "The block for run $run needs code=<checkout>@<commit> diff=<...>, from launch_run.sh --pin, or code=none"; return 1; }
+	if [ "$PLAN_CODE" != none ]; then
+		case "$PLAN_COMMIT" in "" | *[!0-9a-f]*) err "The block for run $run has no commit in code=<checkout>@<commit>"; return 1 ;; esac
+		case "$PLAN_DIFF" in clean | [0-9a-f]*) ;; *) err "The block for run $run needs diff=clean or diff=<hash>, from launch_run.sh --pin"; return 1 ;; esac
+		case "$PLAN_CODE" in /* | *..* | "") err "The block's checkout must be a folder of the workspace: $PLAN_CODE"; return 1 ;; esac
+	fi
 }
 
-# The state of a log's last run: "open<TAB>id<TAB>pid", "finished<code><TAB>id", or "none".
+# The state of a log's last run: "open<TAB>id<TAB>pid", "finished<code><TAB>id", or "none". While a run
+# with a run-id is open, only its own end marker counts.
 log_state() {
 	awk -v OFS='\t' '
 		open && oid != "" { if ($0 == "# ---------- end " oid " ----------") { open = 0; closing = 1 }; next }
@@ -439,14 +601,13 @@ log_state() {
 		closing && /^# finished:/ { fin = $0; closing = 0 }
 		END {
 			if (open) { pid = ""; if (match(os, /PID [0-9]+/)) pid = substr(os, RSTART + 4, RLENGTH - 4); print "open", oid, pid }
-			else if (fin != "") { code = fin; sub(/.*exit code /, "", code); print "finished" code, oid }
+			else if (fin != "") { code = fin; sub(/.*exit code /, "", code); sub(/[^0-9a-z].*/, "", code); print "finished" code, oid }
 			else print "none"
 		}' "$1"
 }
 
-# The PIDs of this user's processes that have a file open for writing; every process of a run holds
-# its log so, the command's children included, even after its shell is gone. Returns 2 when no way to
-# tell exists here, neither /proc nor lsof.
+# Whether one of this user's processes has the file open for writing: 0 yes, 1 no, 2 cannot tell.
+# Every process of a run holds its log so, the command's children included, even after its shell is gone.
 writers_of() {
 	local f="$1" real
 	real="$(cd "$(dirname "$f")" 2>/dev/null && pwd -P)/$(basename "$f")"
@@ -502,6 +663,24 @@ limited() {
 	else "$@"; fi
 }
 
+# Whether any of the given GPUs has a process on it; also refuses when that cannot be told.
+gpus_busy() {
+	local ids="$1" map apps id uuid
+	command -v nvidia-smi >/dev/null 2>&1 || return 0
+	map="$(limited 15 nvidia-smi --query-gpu=index,uuid --format=csv,noheader 2>/dev/null)" ||
+		{ err "nvidia-smi failed, so whether the GPUs are free cannot be told"; return 1; }
+	apps="$(limited 15 nvidia-smi --query-compute-apps=gpu_uuid --format=csv,noheader 2>/dev/null)" ||
+		{ err "nvidia-smi could not list the processes, so whether the GPUs are free cannot be told"; return 1; }
+	for id in $(printf '%s' "$ids" | tr ',' ' '); do
+		uuid="$(printf '%s\n' "$map" | awk -F', *' -v i="$id" '$1 == i { print $2 }')"
+		[ -n "$uuid" ] || { err "GPU $id is not on this machine"; return 1; }
+		if printf '%s\n' "$apps" | tr -d ' ' | grep -Fxq -- "$uuid"; then
+			err "GPU $id has a process on it: it is not free"
+			return 1
+		fi
+	done
+}
+
 # The models of the given GPUs, such as `NVIDIA A100-SXM4-80GB`, or `unknown` without nvidia-smi.
 gpu_model() {
 	local models
@@ -511,19 +690,13 @@ gpu_model() {
 	printf '%s' "${models:-unknown}"
 }
 
-# Save what makes the checkout dirty, untracked files and binaries included, so that `git apply`
-# on the commit rebuilds it; under a new name if an earlier diff differs.
+# Save what makes the checkout dirty in the output folder, readable by you only, under a new name if
+# an earlier diff differs.
 save_diff() {
-	local code="$1" outputs="$2" file tmp f
+	local code="$1" outputs="$2" file tmp
 	mkdir -p "$outputs" || { err "Could not create $outputs"; return 1; }
 	tmp="$(mktemp "$outputs/.git_diff.XXXXXX")" || { err "Could not write in $outputs"; return 1; }
-	{
-		git_safe "$code" diff --no-ext-diff --no-textconv --binary --src-prefix=a/ --dst-prefix=b/ HEAD
-		git_safe "$code" ls-files -o --exclude-standard -z | while IFS= read -r -d '' f; do
-			(cd "$code" && git -c core.fsmonitor= -c core.hooksPath=/dev/null -c color.ui=false \
-				diff --no-index --no-ext-diff --no-textconv --binary --src-prefix=a/ --dst-prefix=b/ -- /dev/null "$f")
-		done
-	} >"$tmp"
+	diff_content "$code" >"$tmp" || { err "Could not save the diff of $code"; return 1; }
 	if grep -Eiq "$SECRET_RE" "$tmp"; then
 		err "Warning: the saved diff seems to hold a secret; it is readable by you only. Check $outputs."
 	fi

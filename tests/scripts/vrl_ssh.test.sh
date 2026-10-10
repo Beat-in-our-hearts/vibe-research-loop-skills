@@ -5,10 +5,11 @@
 export PATH="$FAKES:$PATH" FAKE_SSH_STATE="$TMP_ROOT/state" FAKE_HOME="$TMP_ROOT/home" TMPDIR="$TMP_ROOT/tmp"
 export HOME="$TMP_ROOT/user"
 mkdir -p "$FAKE_SSH_STATE" "$FAKE_HOME" "$TMPDIR" "$TMP_ROOT/here/docs/AGENTS" "$HOME/.ssh"
-printf 'Host myhpc\n    HostName example.org\nHost my.hpc other.host\n    HostName example.net\n' >"$HOME/.ssh/config"
+printf 'Include config.d/*\nHost myhpc\n    HostName example.org\nHost my.hpc other.host\n    HostName example.net\n' >"$HOME/.ssh/config"
+mkdir -p "$HOME/.ssh/config.d" && printf 'Host *.cluster !bad.cluster\n    User bob\n' >"$HOME/.ssh/config.d/hpc"
 WS="$TMP_ROOT/remote ws/it's"
 mkdir -p "$WS"
-printf 'TZ=Asia/Dubai\nGREETING=hello\n' >"$WS/.env"
+printf 'TZ=Asia/Dubai\nGREETING=hello\nQUOTED="a b"\nSINGLE='"'"'c d'"'"'\nBAD=$(touch %s/pwned)\nLD_PRELOAD=/tmp/evil.so\n' "$TMP_ROOT" >"$WS/.env"
 V="$SCRIPTS/vrl_ssh.sh"
 up() { bash "$V" connect myhpc >/dev/null 2>&1; }
 down() { [ -f "$FAKE_SSH_STATE/master" ] && kill "$(cat "$FAKE_SSH_STATE/master")" 2>/dev/null; rm -f "$FAKE_SSH_STATE/master"; }
@@ -53,7 +54,8 @@ test_socket_folder_is_private() {
 }
 
 test_alias_must_be_a_host_entry() {
-	run bash "$V" check evil.example.org; expect_rc 2 && expect_out "not a Host entry"
+	run bash "$V" check evil.example.org; expect_rc 2 && expect_out "matches no Host line"
+	run bash "$V" check node1.cluster; [ "$RC" != 2 ] || { echo "a Host pattern from an included file should pass: $OUT"; FAILED=1; }
 	run bash "$V" check other.host; [ "$RC" != 2 ] || { echo "a second name on a Host line should pass: $OUT"; FAILED=1; }
 }
 
@@ -83,6 +85,18 @@ test_marker_on_its_own_line() {
 	up
 	run bash "$V" run myhpc --workspace "$WS" -- 'printf abc'
 	printf '%s\n' "$OUT" | grep -qx '__EXIT 0' || { echo "$OUT"; return 1; }
+}
+
+test_env_is_read_never_run() {
+	up
+	run bash "$V" run myhpc --workspace "$WS" -- 'echo "[$QUOTED][$SINGLE][${LD_PRELOAD:-unset}][$BAD]"; case ":$PATH:" in *":$HOME/.local/bin:"*) echo path-ok;; esac'
+	expect_rc 0 && expect_out "[a b][c d][unset][\$(touch" && expect_out "path-ok" && expect [ ! -e "$TMP_ROOT/pwned" ]
+}
+
+test_hung_master_check_is_7() {
+	up
+	FAKE_SSH_CHECK_HANG=1 run bash "$V" run myhpc --workspace "$WS" --limit 3 -- 'echo hi'
+	expect_rc 7 && expect_out "master does not answer"
 }
 
 test_env_missing() {

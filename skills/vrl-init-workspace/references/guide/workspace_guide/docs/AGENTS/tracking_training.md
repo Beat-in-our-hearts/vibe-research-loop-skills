@@ -9,7 +9,7 @@
   - Done: the result, with the comparison and its p-value; write > or < only when the difference is significant, and ≈ otherwise; add any published reference number.
   - Running: epoch and step, overall progress, the latest losses, and the GPU it runs on.
   - Waiting: what it needs and how long it should take.
-- Resource rows: take the GPU and memory rows from `resources.sh --rows --allowed <the GPU ids experiments may use>`, one of the vrl scripts, which reads the real limits: `nvidia-smi` for each GPU and the container's memory limit. Status is the usage in percent, which for a GPU is its utilization; Details give used / limit, and for a GPU also its power and the run it serves. Its storage row is the filesystem from `df`; for the storage quota row, run this machine's quota command instead, when it has one.
+- Resource rows: take the GPU and memory rows from `resources.sh --rows --allowed <the GPU ids experiments may use>`, one of the VRL scripts, which reads the real limits: `nvidia-smi` for each GPU and the container's memory limit. Status is the usage in percent, which for a GPU is its utilization; Details give used / limit, and for a GPU also its power and the run it serves. Keep its storage row, the filesystem from `df`, and add a storage quota row from this machine's quota command when it has one.
 - Below the table, add one line for each thing that needs the user: a failure, a limit nearly reached, a result that looks too good, a GPU that `resources.sh` lists as not free for a reason no run explains, such as another user's process, and any `note:` it prints.
 
 ## Example

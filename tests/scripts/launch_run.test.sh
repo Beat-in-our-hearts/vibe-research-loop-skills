@@ -8,6 +8,7 @@ mkdir -p "$WS/docs/plans" "$TMP_ROOT/bin"
 cd "$WS" || exit 1
 printf 'XDG_CACHE_HOME=%s/.cache\nTZ=Asia/Dubai\nPYTHONPATH=$PYTHONPATH:/x\n' "$WS" >.env
 COM=(--nohup --no-gpu --machine box --code none)
+COM2=(--nohup --no-gpu --machine box)
 SESSION="vrltest$$"
 # Sleep lengths unique to this run, so that no other test run's processes match.
 U=$((1000 + $$ % 8000))
@@ -58,29 +59,48 @@ test_header_and_footer() {
 	expect [ ! -e "$1" ]
 }
 
+sha() { (sha256sum "$1" 2>/dev/null || shasum -a 256 "$1") | cut -d' ' -f1; }
+
 test_plan_form() {
-	printf '# Plan\n```bash run=baseline\necho "baseline run"\n```\n~~~sh run=tilde\necho tilde\n~~~\n```bash run=baseline2\necho two\n```\n````bash run=nested\ncat <<'X'\n```\nX\necho still inside\n````\n```bash run=open\necho never closed\n' >docs/plans/2026-10-08-demo.md
-	printf '```bash run=crlf\r\necho crlf\r\n```\r\n' >docs/plans/2026-10-08-crlf.md
-	sha() { (sha256sum "$1" 2>/dev/null || shasum -a 256 "$1") | cut -d' ' -f1; }
+	git init -q prepo && (cd prepo && git config user.name t && git config user.email t@t && git config commit.gpgsign false && echo v1 >train.py && git add . && git commit -qm init)
+	pin="$(bash "$L" --pin prepo)"
+	expect [ "${pin%% diff=*}" != "$pin" ] && expect_no_out "x"
+	printf '# Plan\n```bash run=baseline gpus=0 %s env=lab\ncd prepo && echo "baseline run in $VRL_OUTPUTS"\n```\n~~~sh run=tilde gpus=0 code=none\necho tilde\n~~~\n````bash run=nested gpus=0 code=none\ncat <<'"'"'X'"'"'\n```\nX\necho still inside\n````\n```bash run=open gpus=0 code=none\necho never closed\n' "$pin" >docs/plans/2026-10-08-demo.md
 	s="$(sha docs/plans/2026-10-08-demo.md)"
-	run bash "$L" --plan docs/plans/2026-10-08-demo.md --run baseline --plan-sha256 "$s" --log logs/demo/baseline.log "${COM[@]}" --wait 6
-	expect_rc 0 && expect grep -q '^# command:   echo "baseline run"$' logs/demo/baseline.log && expect grep -q '^# plan: ' logs/demo/baseline.log
-	run bash "$L" --plan docs/plans/2026-10-08-demo.md --run tilde --plan-sha256 "$s" --log logs/demo/tilde.log "${COM[@]}" --wait 6
-	expect_rc 0 && expect grep -q '^# command:   echo tilde$' logs/demo/tilde.log
-	run bash "$L" --plan docs/plans/2026-10-08-demo.md --run nested --plan-sha256 "$s" --log logs/demo/nested.log "${COM[@]}" --wait 6
-	expect_rc 0 && expect grep -q 'still inside' logs/demo/nested.log
-	run bash "$L" --plan docs/plans/2026-10-08-demo.md --run open --plan-sha256 "$s" --log logs/demo/open.log "${COM[@]}"
-	expect_rc 3 && expect_out "never closes"
-	run bash "$L" --plan docs/plans/2026-10-08-crlf.md --run crlf --plan-sha256 "$(sha docs/plans/2026-10-08-crlf.md)" --log logs/demo/crlf.log "${COM[@]}" --wait 6
-	expect_rc 0
-	run bash "$L" --plan docs/plans/2026-10-08-demo.md --run baseline --plan-sha256 deadbeef --log logs/demo/x.log "${COM[@]}"
-	expect_rc 3 && expect_out "changed since it was approved"
-	run bash "$L" --plan docs/plans/2026-10-08-demo.md --run nope --plan-sha256 "$s" --log logs/demo/x.log "${COM[@]}"; expect_rc 3
-	run bash "$L" --plan docs/plans/2026-10-08-demo.md --run baseline --plan-sha256 "$s" --log logs/demo/x.log "${COM[@]}" -- 'echo extra'; expect_rc 2
+	run bash "$L" --plan docs/plans/2026-10-08-demo.md --run baseline --plan-sha256 "$s" "${COM2[@]}" --wait 6
+	expect_rc 0 && expect_out "started   " && expect_out "log       logs/2026-10-08-demo/baseline.log"
+	expect grep -q "^baseline run in $WS/runs/2026-10-08-demo/baseline$" logs/2026-10-08-demo/baseline.log
+	expect grep -q '^# plan: ' logs/2026-10-08-demo/baseline.log && expect grep -q 'Python env lab' logs/2026-10-08-demo/baseline.log
+	run bash "$L" --plan docs/plans/2026-10-08-demo.md --run tilde --plan-sha256 "$s" "${COM2[@]}" --wait 6; expect_rc 0
+	run bash "$L" --plan docs/plans/2026-10-08-demo.md --run nested --plan-sha256 "$s" "${COM2[@]}" --wait 6
+	expect_rc 0 && expect grep -q 'still inside' logs/2026-10-08-demo/nested.log
+	run bash "$L" --plan docs/plans/2026-10-08-demo.md --run open --plan-sha256 "$s" "${COM2[@]}"; expect_rc 3 && expect_out "never closes"
+	run bash "$L" --plan docs/plans/2026-10-08-demo.md --run baseline --plan-sha256 deadbeef "${COM2[@]}"
+	expect_rc 3 && expect_out "does not have the SHA-256" && expect_no_out "$s"
+	run bash "$L" --plan docs/plans/2026-10-08-demo.md --run baseline --plan-sha256 "$s" "${COM2[@]}" --log logs/elsewhere.log; expect_rc 2
+	run bash "$L" --plan docs/plans/2026-10-08-demo.md --run tilde --plan-sha256 "$s" --nohup --gpus 0 --machine box; expect_rc 3 && expect_out "no GPU"
 	run bash "$L" --plan '' --purpose p --log logs/demo/x.log "${COM[@]}" -- 'echo free form'; expect_rc 2
-	run bash "$L" --plan docs/plans/2026-10-08-demo.md --plan '' --run baseline --plan-sha256 "$s" --log logs/demo/x.log "${COM[@]}"; expect_rc 2
-	cp docs/plans/2026-10-08-demo.md "$TMP_ROOT/outside.md"
-	run bash "$L" --plan "$TMP_ROOT/outside.md" --run baseline --plan-sha256 "$s" --log logs/demo/x.log "${COM[@]}"; expect_rc 3 && expect_out "under docs/plans/"
+	# The code changes after approval: the pin no longer matches.
+	echo v2 >prepo/train.py
+	run bash "$L" --plan docs/plans/2026-10-08-demo.md --run baseline --plan-sha256 "$s" "${COM2[@]}" --resume; expect_rc 3 && expect_out "changed since the plan was approved"
+	cp docs/plans/2026-10-08-demo.md docs/plans/notes.md
+	run bash "$L" --plan docs/plans/notes.md --run tilde --plan-sha256 "$(sha docs/plans/notes.md)" "${COM2[@]}"; expect_rc 3 && expect_out "<date>-<ID>.md"
+	chmod g+w docs/plans/2026-10-08-demo.md
+	run bash "$L" --plan docs/plans/2026-10-08-demo.md --run tilde --plan-sha256 "$s" "${COM2[@]}"; expect_rc 3 && expect_out "Others may write"
+	chmod g-w docs/plans/2026-10-08-demo.md
+}
+
+test_env_is_read_never_run() {
+	cp .env .env.bak
+	printf 'GOOD="quoted value"\nBAD=$(touch %s/pwned)\nLD_PRELOAD=/tmp/evil.so\n' "$TMP_ROOT" >>.env
+	run bash "$L" --purpose p --log logs/e/env.log "${COM[@]}" --wait 6 -- 'echo "[$GOOD][$BAD][${LD_PRELOAD:-unset}]"'
+	mv .env.bak .env
+	expect_rc 0 && expect [ ! -e "$TMP_ROOT/pwned" ]
+	expect grep -q '^\[quoted value\]\[$(touch' logs/e/env.log && expect grep -q '\]\[unset\]$' logs/e/env.log
+}
+
+test_wait_takes_seconds() {
+	run bash "$L" --purpose p --log logs/w/w.log "${COM[@]}" --wait -- 'echo hi'; expect_rc 2 && expect_out "--wait takes whole seconds"
 }
 
 test_refusals() {
@@ -88,7 +108,7 @@ test_refusals() {
 	run bash "$L" --purpose p --log logs/r/t.log "${COM[@]}" -- 'python x.py --hf hf_abcdefghijklmnopqrstuvwxyz123'; expect_rc 3
 	run bash "$L" --purpose p --log logs/r/t.log "${COM[@]}" -- 'python x.py --api_key=abc123'; expect_rc 3
 	printf '#!/bin/sh\n' >"$TMP_ROOT/bin/sbatch"; chmod +x "$TMP_ROOT/bin/sbatch"
-	PATH="$TMP_ROOT/bin:$PATH" run bash "$L" --purpose p --log logs/r/t.log "${COM[@]}" -- 'echo hi'; expect_rc 3 && expect_out Slurm
+	PATH="$TMP_ROOT/bin:$PATH" run bash "$L" --purpose p --log logs/r/t.log "${COM[@]}" -- 'echo hi'; expect_rc 3 && expect_out "job scheduler"
 	rm -f "$TMP_ROOT/bin/sbatch"
 	run bash "$L" --purpose p --log logs/r/t.log --nohup --machine box --code none -- 'echo hi'; expect_rc 2
 	run bash "$L" --purpose p --log logs/r/t.log --nohup --no-gpu --code none -- 'echo hi'; expect_rc 2
@@ -111,6 +131,12 @@ test_no_second_copy_even_after_its_shell_is_killed() {
 	run bash "$L" --purpose 'd / long' --log logs/x/long.log "${COM[@]}" -- 'echo again'; expect_rc 3 && expect_out "--restart"
 	run bash "$L" --purpose 'd / long' --log logs/x/long.log "${COM[@]}" --restart --wait 6 -- 'echo again'; expect_rc 0
 	expect grep -q 'exit code unknown: closed by a restart' logs/x/long.log
+}
+
+test_a_failed_run_needs_restart() {
+	run bash "$L" --purpose 'f / x' --log logs/f/x.log "${COM[@]}" --wait 6 -- 'exit 1'; expect_rc 1
+	run bash "$L" --purpose 'f / x' --log logs/f/x.log "${COM[@]}" -- 'echo again'; expect_rc 3 && expect_out "exit code 1"
+	run bash "$L" --purpose 'f / x' --log logs/f/x.log "${COM[@]}" --restart --wait 6 -- 'echo again'; expect_rc 0
 }
 
 test_finished_run_is_not_overwritten() {

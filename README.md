@@ -95,15 +95,15 @@ The agent also picks a research skill on its own when a request matches its desc
 - Run `vrl-init-workspace` first, once per machine. It carries its own copy of the guide, so the guide never needs to be cloned. The research skills rely on the workspace's rules and on the page templates in that guide, so the Notion databases need no templates of their own: each page is written from its database's template one section at a time, as the section is filled, and the template's instructions stay in the template, so a page holds only content. Each idea, experiment, and finding page opens with a callout that says what you decide and how.
 - The research skills write Notion pages in the reply language, unless the workspace's language rules set another one for Notion, but use the English names of the Notion databases and properties, the ones `vrl-init-workspace` creates.
 - Start the agent from the workspace root; the research skills stop anywhere else.
-- Before bed, start `/loop /vrl-night-watch` in Claude Code. From 22:00 to 10:00, or the hours you give it, the agent launches approved experiments whenever a GPU is free, asks you nothing, and leaves a morning report of what ran and what waits for you. It tells you beforehand which commands to allow without a prompt: only those that check, count, or launch an approved plan, never one that runs any command.
+- Before bed, start `/loop /vrl-night-watch` in Claude Code, or run `$vrl-night-watch` every half hour from a Codex automation in the workspace itself. From 22:00 to 10:00, or the hours you give it, the agent launches approved experiments whenever a GPU is free, asks you nothing, and leaves a morning report of what ran and what waits for you. It gives you beforehand the exact rules to allow without a prompt, for your own settings: those that check, count, launch a run of an approved plan, or write the memory store's pages, and none that runs any command or edits the rules, plans, `.env`, or code. These rules are the only guard: an allowed page write can still tick Human Approved, so keep the watch to nights you have approved what should run.
 - Four scripts in [`skills/vrl-init-workspace/scripts/`](skills/vrl-init-workspace/scripts/) do the steps an agent should not improvise, and the skills call them; each explains itself with `--help`:
 
   | Script | Does |
   |---|---|
-  | `launch_run.sh` | Launches a long-running command with its log header and footer, in tmux or in the background; launches a run of an approved plan only while the plan file has the hash recorded at approval; refuses a second copy, a finished run, and a command that seems to hold a secret |
-  | `resources.sh` | Prints the GPU, memory, and storage rows of a report, and which GPUs are free: no process, idle, and claimed by no running log |
-  | `gpu_hours.py` | Counts the single-GPU hours that runs took, from their logs, for an idea's budget |
-  | `vrl_ssh.sh` | Reaches the remote host in remote mode through one SSH master, with time limits, and never logs in by itself |
+  | `launch_run.sh` | Launches a long-running command from the workspace root with its log header and footer, in tmux or in the background; launches a run of an approved plan only while the plan file has the hash recorded at approval and the code matches the plan's pin; refuses a second copy, a run that has ended unless told to restart or resume it, a job scheduler, a command that sets `CUDA_VISIBLE_DEVICES`, and a command that seems to hold a secret |
+  | `resources.sh` | Prints the GPU, memory, and storage rows of a report, and which GPUs are free: no process, idle in two samples, and claimed by no running log |
+  | `gpu_hours.py` | Counts the single-GPU hours that runs took, from their logs, for an idea's budget, and exits 3 when it cannot count them all |
+  | `vrl_ssh.sh` | Reaches the remote host in remote mode through one SSH master, with time limits; only you open the master, so it never asks for a password |
 - The research skills keep the IDs of the Notion project page and databases in the workspace's `docs/notion/ids.md`.
 - The research memory can live in Feishu (飞书, the China edition) instead of Notion: `vrl-init-workspace` asks which. In Feishu, each project is a wiki doc with a Base holding the Ideas, Experiments, and Findings tables, and each entry is a record plus a doc for its body; the workspace's `docs/AGENTS/feishu.md` tells the research skills what each Notion step becomes. Everything else, the review by colors included, works the same, except that record fields carry no color: review their values in the entry's doc.
 
@@ -145,11 +145,11 @@ Each agent ignores the other's settings, so one folder serves both.
 
 Test the scripts with `bash tests/scripts/run.sh`, which runs them against stand-ins for `ssh`, `nvidia-smi`, `mount`, and `sshfs`; GitHub Actions runs the same tests, with shellcheck, on Linux and macOS whenever the scripts change.
 
-`skills/vrl-init-workspace/references/guide/` is a copy of the English guide's committed files. After the guide changes, replace the copy with the guide's latest commit, then commit it here with that commit's hash in the message:
+`skills/vrl-init-workspace/references/guide/` began as a copy of the English guide, and since 0.2.0 this copy is the source of truth: the skills' workspace rules and templates depend on it, so change it here, with the skills that use it, and port the change to the guide afterwards. Never overwrite it with the guide's files.
 
-```bash
-rm -rf skills/vrl-init-workspace/references/guide && mkdir -p skills/vrl-init-workspace/references/guide && git -C <guide checkout> archive HEAD | tar -x -C skills/vrl-init-workspace/references/guide
-```
+## Upgrading from 0.1.x
+
+Install the new release as above. A workspace set up by 0.1.x has older rule files, so ask the agent to bring them up to date from the bundled guide: compare each file in `docs/AGENTS/`, and in remote mode `remote.md` too, with its template, add what is new while keeping your own changes, and redo step 4 of "Set up a workspace" in `workspace_prompts.md`, or step 5 of "Set up a remote workspace" in `remote_prompts.md`, which fills the new rows of `docs/AGENTS/machine.md`: the job scheduler, the tmux session with the command that starts it, and the path of the VRL scripts. Experiments planned before the upgrade have no plan blocks, so finish them by hand, or plan them again.
 
 ## License
 

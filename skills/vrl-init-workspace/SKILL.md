@@ -40,11 +40,11 @@ At the start, run `bash <this skill's folder>/scripts/check_update.sh`. If it re
    |---|---|---|
    | Local | This machine | `uv`, the memory store's CLI, `gh`, and `hf` if the user wants the bucket |
    | Remote | This machine | The memory store's CLI, `gh` |
-   | Remote | The remote host, once the SSH master is up: right after the Connection step of "Set up a remote workspace" or "Add a remote machine", run through the master as `scripts/vrl_ssh.sh script <alias> --limit 0 -- setup_clis.sh <command> --only <tools>`, in the background | `uv`, `gh`, and `hf` if the user wants the bucket |
+   | Remote | The remote host, once the remote workspace's `.env` exists, after the Rule files step of "Set up a remote workspace" or the This machine step of "Add a remote machine", run through the master as `scripts/vrl_ssh.sh script <alias> --workspace <remote workspace> --limit 0 -- setup_clis.sh <command> --only <tools> --workspace <remote workspace>`, in the background, so that the caches and the `hf` login land in the workspace's `.cache/` | `uv`, `gh`, and `hf` if the user wants the bucket |
 
    - Run `check` first and show the user its table; run `install` for what is missing only after they agree.
    - Run `login` in the background, since `lark-cli`, `gh`, and `hf` wait until the user approves; `lark-cli` asks for two approvals, one to register the user's app and one to log in. Without a terminal, each login prints a URL and a one-time code: pass them to the user at once, as `hf`'s code expires in 5 minutes, and tell them to open the URL in any browser and check the code. Never ask for a token or pass one to a command.
-   - Log in to the memory store's CLI and `gh` right after installing them, and to `hf` in the Hugging Face part, once the workspace's `.env` exists. Pass `--workspace` only to that `hf` login, with the workspace, in remote mode the remote one, since its `XDG_CACHE_HOME` decides where `hf` keeps the login; before `.env` exists, the script refuses the `hf` login.
+   - Log in to the memory store's CLI and `gh` right after installing them, and to `hf` in the Hugging Face part, once the workspace's `.env` exists. Pass `--workspace` with the workspace to every call on the remote host, and locally to the `hf` login, since the workspace's `XDG_CACHE_HOME` decides where the caches and the `hf` login go; before `.env` exists, the script refuses the `hf` login.
    - Finish with `check`, and carry its notes, such as a `PATH` line or `NOTION_KEYRING=0` for the shell profile, into the report.
 4. **Parts.** Do the parts below in order, each by following its prompt. If the user names only some parts, do only those; otherwise skip a part only if the user says it is done.
 

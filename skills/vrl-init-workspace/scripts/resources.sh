@@ -154,9 +154,11 @@ expand_ids() {
 
 in_list() { case " $2 " in *" $1 "*) return 0 ;; esac; return 1; }
 
+# Slurm, PBS, LSF, or SGE: a job's own variables, or the commands that submit jobs.
 slurm_here() {
-	[ -n "${SLURM_JOB_ID:-}" ] || command -v sbatch >/dev/null 2>&1 || command -v squeue >/dev/null 2>&1 ||
-		[ -e /etc/slurm/slurm.conf ] || [ -e /etc/slurm-llnl/slurm.conf ]
+	[ -n "${SLURM_JOB_ID:-}${PBS_JOBID:-}${LSB_JOBID:-}" ] || { [ -n "${JOB_ID:-}" ] && [ -n "${SGE_ROOT:-}" ]; } ||
+		command -v sbatch >/dev/null 2>&1 || command -v squeue >/dev/null 2>&1 || command -v qsub >/dev/null 2>&1 ||
+		command -v bsub >/dev/null 2>&1 || [ -e /etc/slurm/slurm.conf ] || [ -e /etc/slurm-llnl/slurm.conf ]
 }
 
 # OPEN_FILES: on Linux, the files this user's processes hold open for writing, from one /proc scan.
@@ -235,7 +237,7 @@ gpu_rows() {
 	i=1
 	while [ "$i" -le "$samples" ]; do
 		[ "$i" = 1 ] || sleep 2
-		gpus="$(limited "$(budget "$SMI_LIMIT")" nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.used,memory.total,power.draw,power.limit \
+		gpus="$(limited "$(budget "$SMI_LIMIT")" nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.used,memory.total,power.draw,power.limit,name \
 			--format=csv,noheader,nounits 2>/dev/null)"
 		n=$?
 		if [ "$n" -ne 0 ] || [ -z "$gpus" ]; then
@@ -263,7 +265,7 @@ EOF
 
 	while IFS=, read -r index uuid util used total draw limit rest; do
 		index="$(trim "$index")" uuid="$(trim "$uuid")" util="$(trim "$util")" used="$(trim "$used")"
-		total="$(trim "$total")" draw="$(trim "$draw")" limit="$(trim "$limit")"
+		total="$(trim "$total")" draw="$(trim "$draw")" limit="$(trim "$limit")" rest="$(trim "$rest")"
 		if ! is_uint "$index"; then
 			if [ -n "$(trim "$index$uuid")" ]; then
 				lost=1
@@ -272,10 +274,12 @@ EOF
 			continue
 		fi
 		seen="$seen $index"
+		details=""
+		[ -z "$rest" ] || details="$rest, "
 		if is_num "$used" && is_num "$total"; then
-			details="Memory $(awk -v u="$used" -v t="$total" 'BEGIN { printf "%.1f / %.1f GiB", u / 1024, t / 1024 }')"
+			details="${details}memory $(awk -v u="$used" -v t="$total" 'BEGIN { printf "%.1f / %.1f GiB", u / 1024, t / 1024 }')"
 		else
-			details="Memory unknown"
+			details="${details}memory unknown"
 		fi
 		if is_num "$draw" && is_num "$limit"; then
 			details="$details, power $(awk -v d="$draw" -v l="$limit" 'BEGIN { printf "%.0f / %.0f W", d, l }')"
@@ -324,14 +328,14 @@ EOF
 		FREE_LINE="free: unknown (nvidia-smi lists a GPU it cannot read, so the GPU numbers may have moved)"
 	elif [ -n "$CLAIMS_UNKNOWN" ]; then
 		FREE_LINE="free: unknown ($CLAIMS_UNKNOWN)"
-	elif [ -n "${SLURM_JOB_ID:-}" ]; then
-		FREE_LINE="free: unknown (inside a Slurm job, which has its own GPUs)"
+	elif [ -n "${SLURM_JOB_ID:-}${PBS_JOBID:-}${LSB_JOBID:-}" ]; then
+		FREE_LINE="free: unknown (inside a scheduler's job, which has its own GPUs)"
 	elif slurm_here; then
-		FREE_LINE="free: unknown (a Slurm scheduler assigns the GPUs)"
+		FREE_LINE="free: unknown (a job scheduler assigns the GPUs)"
 	else
 		FREE_LINE="free: ${free:-none}"
 	fi
-	slurm_here && note "this machine has a Slurm scheduler: launch through it as docs/AGENTS/machine.md says"
+	slurm_here && note "this machine has a job scheduler: launch through it as docs/AGENTS/machine.md says"
 	[ -z "$not_free" ] || NOT_FREE_LINE="not free: $not_free"
 	[ -z "$claimed" ] || CLAIMED_LINE="claimed: $claimed"
 }

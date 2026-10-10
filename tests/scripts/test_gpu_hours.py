@@ -74,6 +74,7 @@ class GpuHours(unittest.TestCase):
             self.assertIn("running", " ".join(r["runs"][0]["notes"]))
         finally:
             proc.kill()
+            proc.wait()
             log.close()
 
     def test_time_formats(self):
@@ -147,6 +148,21 @@ class GpuHours(unittest.TestCase):
         self.write("a.log", header(resources="box, no GPU, Python env gpu2", command="pip install accelerate deepspeed") + footer())
         r = self.count()
         self.assertEqual((r["rc"], r["single_gpu_hours"], r["unknown_hours"]), (0, 0, 0))
+
+    def test_gpus_column_tells_none_from_gpu_0(self):
+        self.write("a.log", header(resources="box, GPU 0 (A100)") + footer())
+        self.write("b.log", header(resources="box, no GPU, Python env v", run_id="bbbbbbbbbbbb") + footer(run_id="bbbbbbbbbbbb"))
+        out = subprocess.run([sys.executable, SCRIPT, self.dir], stdout=subprocess.PIPE, universal_newlines=True).stdout
+        self.assertIn("| GPU 0 |", out)
+        self.assertIn("| none |", out)
+
+    def test_since_without_offset_uses_the_workspace_tz(self):
+        self.write("a.log", header(start="2026-10-08 12:00:00 +00:00") + footer(end="2026-10-08 14:00:00 +00:00"))
+        with open(os.path.join(self.dir, ".env"), "w") as f:
+            f.write("TZ=UTC\n")
+        out = subprocess.run([sys.executable, SCRIPT, "--json", "--since", "2026-10-08 13:00", "."], cwd=self.dir,
+                             stdout=subprocess.PIPE, universal_newlines=True).stdout
+        self.assertAlmostEqual(json.loads(out)["single_gpu_hours"], 2.0)
 
     def test_bad_time_does_not_crash(self):
         self.write("a.log", header(start="2026-10-08 12:00:60 +04:00") + footer())
