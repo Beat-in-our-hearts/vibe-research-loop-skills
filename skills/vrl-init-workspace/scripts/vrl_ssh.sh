@@ -449,7 +449,7 @@ remote_line() {
 		if [ "$NO_ENV" = 0 ]; then
 			# .env is read as literal NAME=value lines, never run, as launch_run.sh reads it.
 			line="$line{ [ -f .env ] || { echo 'vrl_ssh: the workspace has no .env; pass --no-env if setup has not written it yet' >&2; exit 98; }; } && "
-			line="$line"'while IFS= read -r l || [ -n "$l" ]; do case "$l" in ""|"#"*) continue;; esac; n=${l%%=*}; case "$n" in "$l"|""|[0-9]*|*[!A-Za-z0-9_]*|LD_*|DYLD_*|BASH_ENV|ENV|PATH|IFS|PS4|PROMPT_COMMAND|SHELLOPTS|BASHOPTS|PYTHONSTARTUP|PERL5OPT|NODE_OPTIONS) continue;; esac; v=${l#*=}; case "$v" in \"*\") v=${v#\"}; v=${v%\"};; \'"'"'*\'"'"') v=${v#\'"'"'}; v=${v%\'"'"'};; esac; export "$n=$v"; done < .env && '
+			line="$line"'while IFS= read -r _vrl_l || [ -n "$_vrl_l" ]; do _vrl_l=${_vrl_l%"$(printf "\r")"}; case "$_vrl_l" in ""|"#"*) continue;; esac; _vrl_n=${_vrl_l%%=*}; case "$_vrl_n" in "$_vrl_l"|""|[0-9]*|*[!A-Za-z0-9_]*|_vrl_*|LD_*|DYLD_*|BASH_*|ENV|HOME|PATH|CDPATH|IFS|PS4|PROMPT_COMMAND|GLOBIGNORE|SHELLOPTS|BASHOPTS|POSIXLY_CORRECT|PYTHONSTARTUP|PYTHONHOME|PYTHONINSPECT|PERL5OPT|PERL5LIB|PERLLIB|RUBYOPT|NODE_OPTIONS|JAVA_TOOL_OPTIONS|_JAVA_OPTIONS) continue;; esac; _vrl_v=${_vrl_l#*=}; case "$_vrl_v" in \"*\") _vrl_v=${_vrl_v#\"}; _vrl_v=${_vrl_v%\"};; \'"'"'*\'"'"') _vrl_v=${_vrl_v#\'"'"'}; _vrl_v=${_vrl_v%\'"'"'};; esac; export "$_vrl_n=$_vrl_v"; done < .env && unset _vrl_l _vrl_n _vrl_v CDPATH && '
 		fi
 	fi
 	if [ "$STEP_LIMIT" = 0 ]; then

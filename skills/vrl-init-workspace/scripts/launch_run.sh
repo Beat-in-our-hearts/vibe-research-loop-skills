@@ -20,14 +20,17 @@ The plan form launches a run of an approved plan. Its command is the fenced bloc
 whose info string holds `run=<run>`, which also pins what the run needs:
     ```bash run=<run> gpus=<count> code=<checkout>@<commit> diff=<clean|hash> env=<name>
 `--pin <checkout>` prints the `code=... diff=...` words for the checkout as it is now; write them
-into each block when the plan goes to approval. The plan form refuses the run unless the plan file
-still has the given SHA-256, the checkout is still at that commit with that diff, and --gpus names
-that many GPUs. Its log is logs/<date>-<ID>/<run>.log and its outputs runs/<date>-<ID>/<run>/.
+into each block when the plan goes to approval. The diff covers untracked files too, except those a
+committed .gitignore ignores, so a run that writes into its checkout changes the pin. The plan form
+refuses the run unless the plan file still has the given SHA-256, the checkout is still at that
+commit with that diff, and --gpus names that many GPUs. Its log is logs/<date>-<ID>/<run>.log and its
+outputs runs/<date>-<ID>/<run>/, neither of which may be a symlink.
 
 The free form runs any other command, such as a smoke run or a data job.
 
 Either way the command runs with bash from the workspace root, not from its checkout, with no input
-and with these set: the variables of .env, read as literal NAME=value lines, never run; PATH with
+and with these set: the variables of .env, read as literal NAME=value lines, never run, except
+names such as HOME, PATH, or LD_PRELOAD that would change what runs; PATH with
 ~/.local/bin first; CUDA_VISIBLE_DEVICES and CUDA_DEVICE_ORDER=PCI_BUS_ID, so that it sees only its
 GPUs, numbered as nvidia-smi numbers them; PYTHONUNBUFFERED=1; and VRL_OUTPUTS, the absolute path
 of its outputs folder, when it has one.
@@ -177,11 +180,11 @@ main() {
 			return 3
 		fi
 	fi
-	if printf '%s' "$cmd" | grep -Eq '(^|[^A-Za-z0-9_])CUDA_VISIBLE_DEVICES='; then
+	if grep -Eq '(^|[^A-Za-z0-9_])CUDA_VISIBLE_DEVICES=' <<<"$cmd"; then
 		err "The command sets CUDA_VISIBLE_DEVICES itself: pass the GPUs with --gpus instead."
 		return 3
 	fi
-	if printf '%s' "$cmd" | grep -Eiq "$SECRET_RE"; then
+	if grep -Eiq -- "$SECRET_RE" <<<"$cmd"; then
 		err "The command seems to hold a secret, which the log header would record: keep it out of the command."
 		return 3
 	fi
@@ -196,7 +199,7 @@ main() {
 		local now_pin
 		now_pin="$(print_pin "$code")" || return 1
 		if [ "$now_pin" != "code=$code@$PLAN_COMMIT diff=$PLAN_DIFF" ] && ! pin_matches "$now_pin" "$code" "$PLAN_COMMIT" "$PLAN_DIFF"; then
-			err "The checkout $code changed since the plan was approved: it is now $now_pin. A change to the code or a config needs a new approval."
+			err "The checkout $code changed since the plan was approved: it is now $now_pin; git -C $code status shows what changed, which may be a file a run wrote. A change to the code or a config needs a new approval."
 			return 3
 		fi
 	fi
@@ -204,10 +207,18 @@ main() {
 		gpus_busy "$gpus" || return 3
 	fi
 
-	load_env_file ./.env
-
 	local log_path="$log"
 	case "$log_path" in /*) ;; *) log_path="$ws/$log_path" ;; esac
+	# A symlink would send the log or the outputs elsewhere, such as into a file of the user's.
+	if [ -L "$log_path" ]; then
+		err "The log is a symlink: $log"
+		return 3
+	fi
+	if [ "$plan_given" -gt 0 ] &&
+		{ [ -L "$ws/logs/$PLAN_BASE" ] || [ -L "$ws/runs/$PLAN_BASE" ] || [ -L "$ws/runs/$PLAN_BASE/$run" ]; }; then
+		err "logs/$PLAN_BASE, runs/$PLAN_BASE, or runs/$PLAN_BASE/$run is a symlink: the run's log and outputs must stay where the plan puts them"
+		return 3
+	fi
 	mkdir -p "$(dirname "$log_path")" || { err "Could not create the log's folder"; return 1; }
 	local window
 	window="$(basename "$(dirname "$log_path")")/$(basename "$log_path" .log)"
@@ -276,8 +287,13 @@ main() {
 		local branch commit state_word="clean"
 		commit="$(git_safe "$code" rev-parse --short=12 HEAD 2>/dev/null)" || { err "Not a git checkout: $code"; return 2; }
 		branch="$(git_safe "$code" rev-parse --abbrev-ref HEAD 2>/dev/null)"
-		if [ -n "$(git_safe "$code" status --porcelain 2>/dev/null)" ]; then
-			state_word="dirty"
+		checkout_dirty "$code"
+		case $? in
+			1) ;;
+			2) return 3 ;;
+			*) state_word="dirty" ;;
+		esac
+		if [ "$state_word" = dirty ]; then
 			[ -n "$outputs" ] || { err "The checkout $code is dirty: give --outputs so its diff is saved with the run."; return 3; }
 			patch="$(save_diff "$code" "$outputs")" || return 1
 		fi
@@ -325,6 +341,7 @@ main() {
 	cat >"$runner" <<RUNNER
 rm -f -- $(sq "$runner")
 umask 077
+unset CDPATH
 cd $(sq "$ws") || exit 97
 exec 2>>$(sq "$log_path")
 $(declare -f load_env_file)
@@ -376,12 +393,12 @@ RUNNER
 
 	# Report the run as soon as its header is there, then wait up to --wait seconds for its end.
 	local waited=0
-	while [ "$waited" -lt 5 ] && ! grep -Fq "# run-id:    $run_id" "$log_path" 2>/dev/null; do
+	while [ "$waited" -lt 30 ] && ! grep -Fq "# run-id:    $run_id" "$log_path" 2>/dev/null; do
 		sleep 1
 		waited=$((waited + 1))
 	done
 	if ! grep -Fq "# run-id:    $run_id" "$log_path" 2>/dev/null; then
-		err "The command did not start: no header with run-id $run_id in $log"
+		err "The command did not start within 30 s: no header with run-id $run_id in $log. Check the log${session:+ and the tmux session} before launching it again."
 		return 1
 	fi
 	rmdir "$LOCK" 2>/dev/null
@@ -423,27 +440,29 @@ sq() {
 # Export the variables of an .env file without running it: one literal NAME=value per line, quotes
 # around the value dropped. Names that could make a program run other code are skipped.
 load_env_file() {
-	local line name value
-	while IFS= read -r line || [ -n "$line" ]; do
-		line="${line%$'\r'}"
-		case "$line" in "" | "#"*) continue ;; esac
-		name="${line%%=*}"
-		case "$name" in
-			"$line" | "" | [0-9]* | *[!A-Za-z0-9_]*)
+	local _vrl_line _vrl_name _vrl_value
+	while IFS= read -r _vrl_line || [ -n "$_vrl_line" ]; do
+		_vrl_line="${_vrl_line%$'\r'}"
+		case "$_vrl_line" in "" | "#"*) continue ;; esac
+		_vrl_name="${_vrl_line%%=*}"
+		case "$_vrl_name" in
+			"$_vrl_line" | "" | [0-9]* | *[!A-Za-z0-9_]*)
 				printf 'launch_run: .env: skipped a line that is not NAME=value\n' >&2
 				continue
 				;;
-			LD_* | DYLD_* | BASH_ENV | ENV | PATH | IFS | PS4 | PROMPT_COMMAND | SHELLOPTS | BASHOPTS | PYTHONSTARTUP | PERL5OPT | NODE_OPTIONS)
-				printf 'launch_run: .env: skipped %s, which could make a program run other code\n' "$name" >&2
+			_vrl_* | LD_* | DYLD_* | BASH_* | ENV | HOME | PATH | CDPATH | IFS | PS4 | PROMPT_COMMAND | GLOBIGNORE | \
+				SHELLOPTS | BASHOPTS | POSIXLY_CORRECT | PYTHONSTARTUP | PYTHONHOME | PYTHONINSPECT | \
+				PERL5OPT | PERL5LIB | PERLLIB | RUBYOPT | NODE_OPTIONS | JAVA_TOOL_OPTIONS | _JAVA_OPTIONS)
+				printf 'launch_run: .env: skipped %s, which could change what runs\n' "$_vrl_name" >&2
 				continue
 				;;
 		esac
-		value="${line#*=}"
-		case "$value" in
-			\"*\") value="${value#\"}"; value="${value%\"}" ;;
-			\'*\') value="${value#\'}"; value="${value%\'}" ;;
+		_vrl_value="${_vrl_line#*=}"
+		case "$_vrl_value" in
+			\"*\") _vrl_value="${_vrl_value#\"}"; _vrl_value="${_vrl_value%\"}" ;;
+			\'*\') _vrl_value="${_vrl_value#\'}"; _vrl_value="${_vrl_value%\'}" ;;
 		esac
-		export "$name=$value"
+		export "$_vrl_name=$_vrl_value"
 	done <"$1"
 }
 
@@ -469,13 +488,27 @@ sha256_of() {
 # that `git apply` on the commit turns back into the checkout.
 diff_content() {
 	local code="$1" f
-	git_safe "$code" diff --no-ext-diff --no-textconv --binary --src-prefix=a/ --dst-prefix=b/ HEAD
-	git_safe "$code" ls-files -o --exclude-standard -z | while IFS= read -r -d '' f; do
+	git_safe "$code" diff --no-ext-diff --no-textconv --ignore-submodules=none --binary --src-prefix=a/ --dst-prefix=b/ HEAD
+	git_safe "$code" ls-files -o --exclude-per-directory=.gitignore -z | while IFS= read -r -d '' f; do
 		(cd "$code" && git -c core.fsmonitor= -c core.hooksPath=/dev/null -c color.ui=false \
 			diff --no-index --no-ext-diff --no-textconv --binary --src-prefix=a/ --dst-prefix=b/ -- /dev/null "$f")
 	done
 	# `git diff --no-index` exits 1 whenever the files differ, which they always do here.
 	return 0
+}
+
+# Whether the checkout differs from its commit: 0 dirty, 1 clean, 2 cannot tell. Only the committed
+# .gitignore files hide an untracked file, not .git/info/exclude or a global excludes file, and a file
+# marked skip-worktree or assume-unchanged, whose changes git would not show, is refused.
+checkout_dirty() {
+	local code="$1"
+	if git_safe "$code" ls-files -v | awk '/^[a-zS] / { n++ } END { exit !n }'; then
+		err "$code marks files skip-worktree or assume-unchanged, which hides their changes: clear the marks with git update-index --no-skip-worktree --no-assume-unchanged <file>"
+		return 2
+	fi
+	git_safe "$code" diff --quiet --no-ext-diff --ignore-submodules=none HEAD -- || return 0
+	[ -z "$(git_safe "$code" ls-files -o --exclude-per-directory=.gitignore)" ] || return 0
+	return 1
 }
 
 # The words that pin a checkout: `code=<checkout>@<commit> diff=<clean or the diff's hash>`.
@@ -486,10 +519,11 @@ print_pin() {
 		return 0
 	fi
 	commit="$(git_safe "$code" rev-parse --short=12 HEAD 2>/dev/null)" || { err "Not a git checkout: $code"; return 1; }
-	if [ -z "$(git_safe "$code" status --porcelain 2>/dev/null)" ]; then
-		printf 'code=%s@%s diff=clean\n' "$code" "$commit"
-		return 0
-	fi
+	checkout_dirty "$code"
+	case $? in
+		1) printf 'code=%s@%s diff=clean\n' "$code" "$commit"; return 0 ;;
+		2) return 1 ;;
+	esac
 	tmp="$(mktemp "${TMPDIR:-/tmp}/vrl-pin.XXXXXX")" || return 1
 	diff_content "$code" >"$tmp"
 	hash="$(sha256_of "$tmp" | cut -c1-12)"
@@ -513,7 +547,7 @@ pin_matches() {
 # is read once, into a private copy, which is both hashed and parsed.
 plan_load() {
 	local ws="$1" plan="$2" run="$3" want="$4" real plans copy got parsed info word
-	case "$run" in "" | *[!A-Za-z0-9_.-]*) err "A run name holds only letters, digits, ., - and _"; return 1 ;; esac
+	case "$run" in "" | [!A-Za-z0-9]* | *[!A-Za-z0-9_.-]*) err "A run name starts with a letter or digit and holds only letters, digits, ., - and _"; return 1 ;; esac
 	[ -f "$plan" ] && [ ! -L "$plan" ] || { err "No such plan file, or it is a symlink: $plan"; return 1; }
 	plans="$(cd "$ws/docs/plans" 2>/dev/null && pwd -P)" || { err "This workspace has no docs/plans/"; return 1; }
 	real="$(cd "$(dirname "$plan")" && pwd -P)/$(basename "$plan")"
@@ -524,7 +558,7 @@ plan_load() {
 	esac
 	[ -O "$real" ] || { err "The plan file is not yours: $plan"; return 1; }
 	if [ -n "$(find "$real" \( -perm -020 -o -perm -002 \) -print 2>/dev/null)" ]; then
-		err "Others may write the plan file: $plan. Make it writable by you only."
+		err "Others may write the plan file: $plan. Make it writable by you only, with chmod go-w, which keeps its hash."
 		return 1
 	fi
 	copy="$(mktemp "${TMPDIR:-/tmp}/vrl-plan.XXXXXX")" || return 1
@@ -535,9 +569,29 @@ plan_load() {
 		err "The plan file does not have the SHA-256 recorded at approval: it changed, or the hash is wrong. A changed plan needs a new approval."
 		return 1
 	fi
-	# A block opens with a fence of three or more backticks or tildes whose info string holds the word
-	# run=<run>, and closes only at a line that is a fence of the same character, at least as long. The
-	# first output line is the info string.
+	local other
+	for other in "$plans"/*.md; do
+		[ -f "$other" ] && [ "$other" != "$real" ] || continue
+		if [ "$(sha256_of "$other")" = "$got" ]; then
+			rm -f "$copy"
+			err "Another plan file has the same content: $(basename "$other"). An approval holds for one plan file only."
+			return 1
+		fi
+	done
+	# Only what a reader sees counts: no HTML comment, and run=<run> in one line only, its block's.
+	if grep -q '<!--' "$copy"; then
+		rm -f "$copy"
+		err "The plan file holds an HTML comment, which hides text from a reader: remove it, then approve the plan again."
+		return 1
+	fi
+	if [ "$(tr -d '\r' <"$copy" | grep -Ec -- "(^|[^A-Za-z0-9_])run=$(printf '%s' "$run" | sed 's/\./\\./g')([^A-Za-z0-9_.-]|\$)")" -gt 1 ]; then
+		rm -f "$copy"
+		err "The plan file names run=$run more than once: only its block's info string may."
+		return 1
+	fi
+	# A fence of three or more backticks or tildes, indented at most three spaces, opens a block, which
+	# closes only at a line of the same character alone, at least as long. The run's block is the one
+	# whose info string holds the word run=<run>; its first output line is the info string.
 	parsed="$(tr -d '\r' <"$copy" | awk -v run="$run" '
 		function fence(line,   m) {
 			if (match(line, /^ ? ? ?(````*|~~~~*)/)) { m = substr(line, RSTART, RLENGTH); sub(/^ */, "", m); return m }
@@ -546,23 +600,26 @@ plan_load() {
 		{
 			f = fence($0)
 			if (inside) {
-				if (f != "" && substr(f, 1, 1) == ch && length(f) >= len && $0 ~ /^ ? ? ?[`~][`~]*[ \t]*$/) { inside = 0; next }
-				print
+				t = $0; sub(/^ ? ? ?/, "", t); sub(/[ \t]*$/, "", t)
+				closes = (f != "" && length(t) >= len && t == substr(f, 1, length(t)) && substr(f, 1, 1) == ch)
+				if (closes) { inside = 0; next }
+				if (mine) print
 				next
 			}
 			if (f != "") {
 				info = $0; sub(/^ ? ? ?[`~][`~]*/, "", info)
 				n = split(info, words, /[ \t]+/)
-				hit = 0
-				for (i = 1; i <= n; i++) if (words[i] == "run=" run) hit = 1
-				if (hit) { inside = 1; found++; ch = substr(f, 1, 1); len = length(f); print info; next }
+				mine = 0
+				for (i = 1; i <= n; i++) if (words[i] == "run=" run) mine = 1
+				inside = 1; ch = substr(f, 1, 1); len = length(f)
+				if (mine) { found++; print info }
 			}
 		}
-		END { if (inside) exit 5; if (found != 1) exit (found == 0 ? 3 : 4) }
+		END { if (inside && mine) exit 5; if (found != 1) exit (found == 0 ? 3 : 4) }
 	')"
 	case $? in
 		0) ;;
-		3) rm -f "$copy"; err "The plan has no block for run $run: a fenced block whose info string holds run=$run"; return 1 ;;
+		3) rm -f "$copy"; err "The plan has no block for run $run: a fenced block, indented at most three spaces, whose info string holds run=$run"; return 1 ;;
 		5) rm -f "$copy"; err "The plan's block for run $run never closes"; return 1 ;;
 		*) rm -f "$copy"; err "The plan has more than one block for run $run"; return 1 ;;
 	esac
@@ -571,7 +628,9 @@ plan_load() {
 	PLAN_CMD="$(printf '%s\n' "$parsed" | sed '1d')"
 	PLAN_GPUS="" PLAN_CODE="" PLAN_COMMIT="" PLAN_DIFF="" PLAN_ENV=""
 	PLAN_BASE="$(basename "$real" .md)"
-	for word in $info; do
+	local -a words=()
+	read -r -a words <<<"$info"
+	for word in ${words[@]+"${words[@]}"}; do
 		case "$word" in
 			gpus=*) PLAN_GPUS="${word#gpus=}" ;;
 			code=none) PLAN_CODE=none ;;
@@ -584,7 +643,8 @@ plan_load() {
 	case "$PLAN_GPUS" in "" | *[!0-9]*) err "The block for run $run needs gpus=<count>"; return 1 ;; esac
 	[ -n "$PLAN_CODE" ] || { err "The block for run $run needs code=<checkout>@<commit> diff=<...>, from launch_run.sh --pin, or code=none"; return 1; }
 	if [ "$PLAN_CODE" != none ]; then
-		case "$PLAN_COMMIT" in "" | *[!0-9a-f]*) err "The block for run $run has no commit in code=<checkout>@<commit>"; return 1 ;; esac
+		case "$PLAN_COMMIT" in "" | *[!0-9a-f]*) PLAN_COMMIT="" ;; esac
+		[ "${#PLAN_COMMIT}" -ge 12 ] || { err "The block for run $run needs code=<checkout>@<commit>, with the 12 hex digits launch_run.sh --pin prints"; return 1; }
 		case "$PLAN_DIFF" in clean | [0-9a-f]*) ;; *) err "The block for run $run needs diff=clean or diff=<hash>, from launch_run.sh --pin"; return 1 ;; esac
 		case "$PLAN_CODE" in /* | *..* | "") err "The block's checkout must be a folder of the workspace: $PLAN_CODE"; return 1 ;; esac
 	fi
@@ -612,7 +672,7 @@ writers_of() {
 	local f="$1" real
 	real="$(cd "$(dirname "$f")" 2>/dev/null && pwd -P)/$(basename "$f")"
 	if [ "$(uname -s)" = Linux ] && [ -d /proc/self/fd ]; then
-		ls -l /proc/[0-9]*/fd 2>/dev/null | awk -v f="$real" '$1 ~ /^l.w/ { i = index($0, " -> "); if (i && substr($0, i + 4) == f) n++ } END { exit !n }'
+		{ ls -l /proc/[0-9]*/fd 2>/dev/null || true; } | awk -v f="$real" '$1 ~ /^l.w/ { i = index($0, " -> "); if (i && substr($0, i + 4) == f) n++ } END { exit !n }'
 		return
 	fi
 	command -v lsof >/dev/null 2>&1 || return 2

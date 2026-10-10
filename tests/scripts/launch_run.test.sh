@@ -99,6 +99,65 @@ test_env_is_read_never_run() {
 	expect grep -q '^\[quoted value\]\[$(touch' logs/e/env.log && expect grep -q '\]\[unset\]$' logs/e/env.log
 }
 
+test_env_cannot_change_the_launcher_or_what_runs() {
+	cp .env .env.bak
+	printf 'cmd=echo PWNED\nlog=/tmp/elsewhere.log\nHOME=/evil\nCDPATH=/evil\nline=kept\n_vrl_name=x\n' >>.env
+	run bash "$L" --purpose p --log logs/e/scope.log "${COM[@]}" --wait 6 -- 'echo "[$HOME][${CDPATH:-unset}][$line]"'
+	mv .env.bak .env
+	expect_rc 0 && expect grep -q "^\[$HOME\]\[unset\]\[kept\]$" logs/e/scope.log && expect [ ! -e /tmp/elsewhere.log ]
+	expect_no_out PWNED
+}
+
+test_a_long_command_is_still_checked() {
+	run bash "$L" --purpose p --log logs/r/long.log "${COM[@]}" -- "CUDA_VISIBLE_DEVICES=7 true # $(head -c 70000 /dev/zero | tr '\0' x)"
+	expect_rc 3 && expect_out "CUDA_VISIBLE_DEVICES"
+}
+
+test_the_pin_sees_what_git_would_hide() {
+	git init -q hrepo && (cd hrepo && git config user.name t && git config user.email t@t && git config commit.gpgsign false &&
+		echo v1 >train.py && printf 'ignored/\n' >.gitignore && git add . && git commit -qm init)
+	run bash "$L" --pin hrepo; expect_rc 0 && expect_out "diff=clean"
+	# An untracked file counts unless a committed .gitignore ignores it.
+	echo 'import os' >hrepo/sitecustomize.py; echo sitecustomize.py >>hrepo/.git/info/exclude
+	git -C hrepo config status.showUntrackedFiles no
+	run bash "$L" --pin hrepo; expect_rc 0 && expect_no_out "diff=clean"
+	rm hrepo/sitecustomize.py; mkdir -p hrepo/ignored && echo x >hrepo/ignored/cache
+	run bash "$L" --pin hrepo; expect_rc 0 && expect_out "diff=clean"
+	# A file marked skip-worktree hides its changes, so the pin refuses it.
+	git -C hrepo update-index --skip-worktree train.py; echo v2 >hrepo/train.py
+	run bash "$L" --pin hrepo; expect_rc 1 && expect_out "skip-worktree"
+	git -C hrepo update-index --no-skip-worktree train.py; echo v1 >hrepo/train.py
+}
+
+test_plan_form_refuses_what_a_reader_would_not_see() {
+	git init -q qrepo && (cd qrepo && git config user.name t && git config user.email t@t && git config commit.gpgsign false &&
+		echo v1 >train.py && git add . && git commit -qm init)
+	pin="$(bash "$L" --pin qrepo)"
+	p=docs/plans/2026-10-09-hard.md
+	printf '```bash run=a gpus=0 %s\necho a\n```\n```text\n```bash run=b gpus=0 code=none\n```\n```bash run=c gpus=0 code=qrepo@%s diff=clean\necho c\n```\n```bash run=d gpus=0 code=none\ncat <<'"'"'X'"'"'\n```~\nX\necho still d\n```\n' \
+		"$pin" "$(git -C qrepo rev-parse --short=7 HEAD)" >"$p"
+	s="$(sha "$p")"
+	run bash "$L" --plan "$p" --run b --plan-sha256 "$s" "${COM2[@]}"; expect_rc 3 && expect_out "no block for run b"
+	run bash "$L" --plan "$p" --run c --plan-sha256 "$s" "${COM2[@]}"; expect_rc 3 && expect_out "12 hex digits"
+	run bash "$L" --plan "$p" --run .. --plan-sha256 "$s" "${COM2[@]}"; expect_rc 3 && expect_out "starts with a letter"
+	mkdir -p "$TMP_ROOT/elsewhere" runs && ln -s "$TMP_ROOT/elsewhere" runs/2026-10-09-hard
+	run bash "$L" --plan "$p" --run a --plan-sha256 "$s" "${COM2[@]}"; expect_rc 3 && expect_out "symlink"
+	rm runs/2026-10-09-hard
+	run bash "$L" --plan "$p" --run d --plan-sha256 "$s" "${COM2[@]}" --wait 6; expect_rc 0 && expect grep -q '^still d$' logs/2026-10-09-hard/d.log
+	cp "$p" docs/plans/2026-10-09-hard-again.md
+	run bash "$L" --plan "$p" --run a --plan-sha256 "$s" "${COM2[@]}"; expect_rc 3 && expect_out "same content"
+	rm docs/plans/2026-10-09-hard-again.md
+	run bash "$L" --plan "$p" --run a --plan-sha256 "$s" "${COM2[@]}" --wait 6; expect_rc 0
+	printf 'A note.\n<!--\n```bash run=x gpus=0 code=none\necho hidden\n```\n-->\n' >docs/plans/2026-10-09-hidden.md
+	run bash "$L" --plan docs/plans/2026-10-09-hidden.md --run x --plan-sha256 "$(sha docs/plans/2026-10-09-hidden.md)" "${COM2[@]}"
+	expect_rc 3 && expect_out "HTML comment"
+	printf 'Run y, run=y, is below.\n```bash run=y gpus=0 code=none\necho y\n```\n' >docs/plans/2026-10-09-twice.md
+	run bash "$L" --plan docs/plans/2026-10-09-twice.md --run y --plan-sha256 "$(sha docs/plans/2026-10-09-twice.md)" "${COM2[@]}"
+	expect_rc 3 && expect_out "more than once"
+	ln -s "$TMP_ROOT/target.log" logs/r/link.log 2>/dev/null || { mkdir -p logs/r && ln -s "$TMP_ROOT/target.log" logs/r/link.log; }
+	run bash "$L" --purpose p --log logs/r/link.log "${COM[@]}" -- 'echo hi'; expect_rc 3 && expect [ ! -e "$TMP_ROOT/target.log" ]
+}
+
 test_wait_takes_seconds() {
 	run bash "$L" --purpose p --log logs/w/w.log "${COM[@]}" --wait -- 'echo hi'; expect_rc 2 && expect_out "--wait takes whole seconds"
 }

@@ -9,7 +9,7 @@ printf 'Include config.d/*\nHost myhpc\n    HostName example.org\nHost my.hpc ot
 mkdir -p "$HOME/.ssh/config.d" && printf 'Host *.cluster !bad.cluster\n    User bob\n' >"$HOME/.ssh/config.d/hpc"
 WS="$TMP_ROOT/remote ws/it's"
 mkdir -p "$WS"
-printf 'TZ=Asia/Dubai\nGREETING=hello\nQUOTED="a b"\nSINGLE='"'"'c d'"'"'\nBAD=$(touch %s/pwned)\nLD_PRELOAD=/tmp/evil.so\n' "$TMP_ROOT" >"$WS/.env"
+printf 'TZ=Asia/Dubai\nGREETING=hello\nQUOTED="a b"\nSINGLE='"'"'c d'"'"'\nBAD=$(touch %s/pwned)\nLD_PRELOAD=/tmp/evil.so\nHOME=/evil\n_vrl_n=x\nCRLF=yes\r\n' "$TMP_ROOT" >"$WS/.env"
 V="$SCRIPTS/vrl_ssh.sh"
 up() { bash "$V" connect myhpc >/dev/null 2>&1; }
 down() { [ -f "$FAKE_SSH_STATE/master" ] && kill "$(cat "$FAKE_SSH_STATE/master")" 2>/dev/null; rm -f "$FAKE_SSH_STATE/master"; }
@@ -89,8 +89,9 @@ test_marker_on_its_own_line() {
 
 test_env_is_read_never_run() {
 	up
-	run bash "$V" run myhpc --workspace "$WS" -- 'echo "[$QUOTED][$SINGLE][${LD_PRELOAD:-unset}][$BAD]"; case ":$PATH:" in *":$HOME/.local/bin:"*) echo path-ok;; esac'
+	run bash "$V" run myhpc --workspace "$WS" -- 'echo "[$QUOTED][$SINGLE][${LD_PRELOAD:-unset}][$BAD]"; case ":$PATH:" in *":$HOME/.local/bin:"*) echo path-ok;; esac; echo "[$HOME][$CRLF]"'
 	expect_rc 0 && expect_out "[a b][c d][unset][\$(touch" && expect_out "path-ok" && expect [ ! -e "$TMP_ROOT/pwned" ]
+	expect_out "[$HOME][yes]"
 }
 
 test_hung_master_check_is_7() {

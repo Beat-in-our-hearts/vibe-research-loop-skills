@@ -8,9 +8,9 @@
 | Outputs storage | <path and filesystem, quota, and the command that measures its usage> |
 | System disk | <size, and what must never be written there> |
 | Scheduler | <none, or the scheduler with its partition and limits; with one, jobs are launched through it by hand, since `launch_run.sh` refuses to run there> |
-| tmux session | <the session long-running commands start in, such as `vrl`, and the exact command that starts it from a shell with this machine's settings, such as a proxy, to run again after a reboot; or none, to launch with nohup> |
+| tmux session | <the session long-running commands start in, such as `vrl`, and the exact command that starts it unless it already runs, to run again after a reboot; or none, to launch with nohup> |
 | VRL scripts | <the absolute path of the `scripts/` folder of the vrl-init-workspace skill on the machine the agent is launched on, which holds `vrl_ssh.sh`, `launch_run.sh`, `resources.sh`, and `gpu_hours.py`> |
-| Network | <internet access, and where to download if this machine has none> |
+| Network | <internet access, any proxy, whose settings are in `.env`, and where to download if this machine has none> |
 | Rules on this machine | <anything allowed or forbidden only here> |
 
 - This file describes this machine only; measure current usage live every time.
