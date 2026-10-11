@@ -145,7 +145,7 @@ Each agent ignores the other's settings, so one folder serves both.
 
 ## Maintaining
 
-Test the scripts with `bash tests/scripts/run.sh`, which runs them against stand-ins for `ssh` and `nvidia-smi`; GitHub Actions runs the same tests, with shellcheck, on Linux and macOS whenever the scripts change.
+GitHub Actions runs shellcheck on the scripts whenever they change.
 
 `skills/vrl-init-workspace/references/guide/` began as a copy of the English guide, and since 0.2.0 this copy is the source of truth: the skills' workspace rules and templates depend on it, so change it here, with the skills that use it, and port the change to the guide afterwards. Never overwrite it with the guide's files.
 
