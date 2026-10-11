@@ -1,15 +1,11 @@
 # Tracking training
 
-- Before a long task starts, such as a training plan's first run, suggest scheduled reports to the user: the agent wakes itself to report, at no fixed interval, as it does when the user starts `/loop` without an interval in Claude Code. Where the agent has no such scheduler, the user asks for each report.
-- Time each report by what comes next: soon after the next evaluation, checkpoint, or task end, or when a waiting task can start; sooner while something is at risk, such as a run that may fail or a resource near its limit; further apart while nothing will change, but never so far that a failure would go unnoticed for long. End each report with the time of the next, and stop the scheduled reports once every task has ended.
+- Before a long task starts, such as a training plan's first run, suggest scheduled reports to the user, timed by the agent itself, as with `/loop` without an interval in Claude Code; without such a scheduler, the user asks for each report.
+- Time each report by what comes next: soon after the next evaluation, checkpoint, task end, or a waiting task's start; sooner while something is at risk, such as a failing run or a resource near its limit; further apart while nothing will change, yet never so far that a failure goes unnoticed for long. End each report with the time of the next, and stop the reports once every task has ended.
 - Between reports, never hold a command open to wait; check with short commands when a report is due.
-- Write each report in the reply language: the time with its UTC offset, then one table. Its rows are the plan's tasks in plan order, then each GPU, then memory, then the storage quota.
-- Task rows:
-  - Status: ✅ done, ▶ with the phase that is running (Training, Eval), ⏳ waiting, or ❌ failed.
-  - Done: the result, with the comparison and its p-value; write > or < only when the difference is significant, and ≈ otherwise; add any published reference number.
-  - Running: epoch and step, overall progress, the latest losses, and the GPU it runs on.
-  - Waiting: what it needs and how long it should take.
-- Resource rows: take the GPU and memory rows from `resources.sh --rows --allowed <the GPU ids experiments may use>`, one of the VRL scripts, which reads the real limits: `nvidia-smi` for each GPU and the container's memory limit. Status is the usage in percent, which for a GPU is its utilization; Details give used / limit, and for a GPU also its power and the run it serves. Keep its storage row, the filesystem from `df`, and add a storage quota row from this machine's quota command when it has one.
+- Write each report in the reply language: the time with its UTC offset, then one table as in the example: the plan's tasks in plan order, then the resources.
+- Task rows, by Status: ✅ done, with the result, the comparison and its p-value (> or < only when significant, ≈ otherwise), and any published reference number; ▶ and the running phase (Training, Eval), with epoch and step, overall progress, the latest losses, and its GPU; ⏳ waiting, with what it needs and how long it should take; ❌ failed.
+- Take the GPU, memory, and storage rows from `resources.sh --rows --allowed <the GPU ids experiments may use>`, one of the VRL scripts, and add a storage quota row from this machine's quota command, if any.
 - Below the table, add one line for each thing that needs the user: a failure, a limit nearly reached, a result that looks too good, a GPU that `resources.sh` lists as not free for a reason no run explains, such as another user's process, and any `note:` it prints.
 
 ## Example
@@ -19,11 +15,8 @@
 | Item | Status | Details |
 |---|---|---|
 | Env A | ✅ | Method X 82.4 % > baseline 78.0 % (p = 0.01) |
-| Env B | ✅ | Method X 70.2 % ≈ baseline 69.5 % (p = 0.41) |
 | Env C, train method X | ▶ Training | Epoch 3/5, step 10,200 (about 56 % overall); val loss 0.0087; GPU 0 |
-| Env C, eval method X | ⏳ | 13 seeds, about 3 min each |
 | Env C, train baseline | ⏳ | About 3.3 h, 8 workers |
 | GPU 0 | 96 % | Memory 38.2 / 46.0 GiB, power 344 / 350 W; run 2026-09-30-env-c-comparison/train-method-x |
-| GPU 1 | 0 % | Memory 0.0 / 46.0 GiB, power 31 / 350 W; no process |
 | Memory | 64 % | 102 / 160 GiB |
 | Storage quota | 81 % | 1.21 / 1.50 TB |

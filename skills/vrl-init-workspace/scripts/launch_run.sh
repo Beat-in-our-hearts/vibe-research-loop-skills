@@ -17,65 +17,46 @@ Usage, from the workspace root:
   launch_run.sh --pin <checkout|none>
   launch_run.sh --plan docs/plans/<date>-<ID>.md [--run <run>] --status
 
-The plan form launches a run of an approved plan. Its command is the fenced block of the plan file
-whose info string holds `run=<run>`, which also pins what the run needs:
-    ```bash run=<run> gpus=<count> code=<checkout>@<commit> diff=<clean|hash> env=<name>
-`--pin <checkout>` prints the `code=... diff=...` words for the checkout as it is now; write them
-into each block when the plan goes to approval. The diff covers untracked files too, except those a
-committed .gitignore ignores, so a run that writes into its checkout changes the pin. The plan form
-refuses the run unless the plan file still has the given SHA-256, the checkout is still at that
-commit with that diff, and --gpus names that many GPUs. Its log is logs/<date>-<ID>/<run>.log and its
-outputs runs/<date>-<ID>/<run>/, neither of which may be a symlink.
-
-The free form runs any other command, such as a smoke run or a data job.
-
-Either way the command runs with bash from the workspace root, not from its checkout, with no input
-and with these set: the variables of .env, read as literal NAME=value lines, never run, except
-names such as HOME, PATH, or LD_PRELOAD that would change what runs; PATH with
-~/.local/bin first; CUDA_VISIBLE_DEVICES and CUDA_DEVICE_ORDER=PCI_BUS_ID, so that it sees only its
-GPUs, numbered as nvidia-smi numbers them; PYTHONUNBUFFERED=1; and VRL_OUTPUTS, the absolute path
-of its outputs folder, when it has one.
+The plan form runs the block of the plan file whose info string holds `run=<run>`, and refuses it
+unless the plan file has the given SHA-256, the checkout has the block's commit and diff, and --gpus
+names its gpus= count. Its log is logs/<date>-<ID>/<run>.log and its outputs runs/<date>-<ID>/<run>/,
+neither a symlink. The free form runs any other command. --pin prints the `code=... diff=...` words
+of a checkout as it is now; untracked files that no committed .gitignore ignores count in the diff.
+--status prints, for each run of the plan or the one --run names, whether it has not started, is
+running, stopped without a footer, or finished with its exit code, and the end of its log; it
+changes nothing.
 
 Options:
-  --tmux SESSION     Run in a new window of this tmux session, named after the log; or
-  --nohup            run in the background as a session of its own, outside any terminal.
-  --gpus IDS         The GPUs to use, such as 0,1; none of them may have a process on it. Or
-  --no-gpu           for a command that uses no GPU: CUDA_VISIBLE_DEVICES is set empty.
-  --machine NAME     The machine's short name in docs/AGENTS/machine.md. Required.
-  --purpose TEXT     The header's purpose line; in the plan form it defaults to the plan and the run.
-  --log FILE         Free form: the log, such as logs/<date>-<task>.log.
-  --code DIR|none    Free form: the checkout the command uses, such as main_repo or worktrees/<branch>;
-                     the header names its branch and commit, and whether it is dirty.
-  --outputs DIR      Free form: the run's output folder, created if missing; required when the
-                     checkout is dirty, since the diff that rebuilds it is saved there as
-                     git_diff.patch, readable by you only.
-  --env NAME         The Python environment the header names (default: the block's env=, or the
-                     active virtual or conda environment).
-  --restart          Start again a run whose last start ended with a nonzero or unknown exit code, or
-                     crashed with no footer and no process left: a crashed one is first closed with a
-                     footer at the log's last write.
-  --resume           Start again a run whose last start finished with exit code 0, to continue it.
-                     Without one of the two, a log whose last run has ended is refused: give a rerun
-                     a new run name instead, since a finished run is never overwritten.
-  --new-session      With --tmux: create the session if it does not exist, from this shell.
-  --wait S           Wait up to S seconds (default 3) before reporting the status; a smoke run that
-                     ends within them reports its exit code.
+  --tmux SESSION   Run in a new window of this tmux session; or
+  --nohup          in the background, outside any terminal.
+  --new-session    With --tmux: create the session if it does not exist.
+  --gpus IDS       The GPUs, such as 0,1, each with no process on it; or
+  --no-gpu         none: CUDA_VISIBLE_DEVICES is set empty.
+  --machine NAME   Required: the machine's short name in docs/AGENTS/machine.md.
+  --purpose TEXT   The header's purpose line (plan form default: the plan and the run).
+  --log FILE       Free form: the log, such as logs/<date>-<task>.log.
+  --code DIR|none  Free form: the checkout the command uses, such as main_repo or worktrees/<branch>.
+  --outputs DIR    Free form: the outputs folder, created if missing; required for a dirty checkout.
+  --env NAME       The header's Python environment (default: the block's env=, or the active one).
+  --restart        Start again a run whose last start ended with a nonzero or unknown exit code, or
+                   crashed (no footer, no process left); a crashed one first gets a footer at the
+                   log's last write.
+  --resume         Start again a run whose last start finished with exit code 0, to continue it.
+  --wait S         Seconds to wait before reporting the status (default 3).
 
-It refuses to run on a machine with a scheduler (Slurm, PBS, LSF, or SGE), a command that sets
-CUDA_VISIBLE_DEVICES itself, a command that seems to hold a secret, and a second copy of a live run.
-A run is alive while one of its processes writes its log. The header holds a run-id that only the
-footer repeats, so a program's output cannot fake either.
-
-It prints the log, run-id, session, start time, and code as soon as the run starts, then the status.
+The command runs with bash from the workspace root, with no input, and with these set: the .env
+lines, read as literal NAME=value and never run, except names such as HOME, PATH, or LD_PRELOAD that
+would change what runs; ~/.local/bin first on PATH; CUDA_VISIBLE_DEVICES and
+CUDA_DEVICE_ORDER=PCI_BUS_ID, for only its GPUs; PYTHONUNBUFFERED=1; and VRL_OUTPUTS, the absolute
+path of its outputs folder, when it has one. It refuses on a machine with a scheduler (Slurm, PBS,
+LSF, or SGE), a command that sets CUDA_VISIBLE_DEVICES or seems to hold a secret, and a second copy
+of a live run. It also refuses a log whose last run has ended, unless --restart or --resume is
+given: give a rerun a new run name. It prints the log, run-id, session, start time, and code at the
+start, then the status.
 Exit codes: 0 running, or ended with exit code 0 within the wait; 1 ended with another exit code, or
 did not start; 2 bad arguments, or the tmux session is missing; 3 refused.
-
---status changes nothing: for each run of the plan, or the one --run names, it prints whether it has
-not started, is running, stopped without a footer, or finished with its exit code, and the end of its log.
-
-On the local machine of a remote-mode workspace, the one with docs/AGENTS/remote.md, every form exits
-2: that machine runs no code, so run this on the remote host through vrl_ssh.sh script.
---sync-prepare and --sync-apply are vrl_ssh.sh sync's own steps on the remote host; never run them yourself.
+On the local machine of a remote-mode workspace, every form exits 2: run it on the remote host
+through vrl_ssh.sh script. Never run --sync-prepare or --sync-apply: vrl_ssh.sh sync does.
 EOF
 }
 

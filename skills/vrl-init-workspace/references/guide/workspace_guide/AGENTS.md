@@ -4,9 +4,9 @@ Rules for AI coding agents in this workspace, the directory the agent is launche
 
 ## Rule files
 
-The files below hold the basic rules. If one disagrees with this file, this file wins.
+The files below hold the basic rules; this file wins over them.
 
-- At the start of each session, run `git pull --rebase` in the workspace root if it has a remote, then read every file below. Read them again whenever their full text is no longer in your context, such as after the context has been compacted or summarized. The `@` before each path loads the file automatically only in Claude Code; in Codex and other agents, read the file yourself.
+- At the start of each session, run `git pull --rebase` in the workspace root if it has a remote, then read every file below; read them again whenever their full text has left your context, such as after compaction. Only Claude Code loads `@` imports by itself.
 - If `docs/AGENTS/machine.md` is missing, stop and ask the user to set up this machine first.
 - Before doing what a row names, make sure its file is in your context.
 

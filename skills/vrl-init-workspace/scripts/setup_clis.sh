@@ -1,30 +1,23 @@
 #!/usr/bin/env bash
-# Install and log in to the CLIs of vibe-research-loop: uv, ntn (Notion), lark-cli (Feishu), gh (GitHub), and
-# hf (Hugging Face).
-# Everything goes into the user's home directory; nothing needs sudo.
+# Install and log in to the CLIs of vibe-research-loop, in the user's home and without sudo:
+# uv, ntn (Notion), lark-cli (Feishu), gh (GitHub), and hf (Hugging Face).
 #
 # Usage: setup_clis.sh [check|install|login|all] [--upgrade] [--only uv,ntn,lark-cli,gh,hf] [--workspace DIR]
 #
-#   check        Show which tools are installed, their versions, and which are logged in. Changes nothing.
-#   install      Install each tool that ~/.local/bin lacks into ~/.local/bin, on macOS and Linux alike,
-#                even if another copy exists elsewhere, such as from Homebrew or apt; that copy stays.
-#   login        Log in to ntn, lark-cli, gh, and hf where not logged in yet. In a terminal, each CLI runs its own
-#                login. Without one, as under an agent or `vrl_ssh.sh script`, each prints a URL and a
-#                code to open in any browser, then waits for the approval. Tokens never pass through here.
+#   check        Show each tool's version and login. Changes nothing.
+#   install      Install each tool that ~/.local/bin lacks there; copies elsewhere stay.
+#   login        Log in where needed. Without a terminal, as under an agent or `vrl_ssh.sh script`,
+#                each login prints a URL and a code to open in any browser, then waits for the
+#                approval. No token passes through here.
 #   all          install, then login (the default).
+#   --upgrade    With install or all: also upgrade the tools in ~/.local/bin to their latest release,
+#                reinstalling only when a newer one exists (hf through `uv tool install --upgrade`).
+#   --only       A comma-separated subset (default: uv,ntn,gh,hf; a Feishu workspace takes lark-cli
+#                in place of ntn).
+#   --workspace  The workspace root whose .env to load (default: the current directory, if it has
+#                one). The hf login is refused until that .env exists.
 #
-#   --upgrade    With install or all: also upgrade the tools already in ~/.local/bin to their latest
-#                release. uv, ntn, lark-cli, and gh are reinstalled only when a newer release exists; hf is
-#                left to `uv tool install --upgrade`.
-#   --only       A comma-separated subset of uv,ntn,lark-cli,gh,hf (default: uv,ntn,gh,hf; a Feishu workspace
-#                takes lark-cli in place of ntn).
-#   --workspace  The workspace root whose .env to load (default: the current directory, if it has one).
-#                hf keeps its login under XDG_CACHE_HOME, which .env sets, so the hf login is refused
-#                while that .env does not exist yet; everything else runs without it.
-#
-# On the local machine of a remote-mode workspace, the one with docs/AGENTS/remote.md, it refuses uv and
-# hf, which belong on the remote host: that machine runs no code.
-#
+# On the local machine of a remote-mode workspace it refuses uv and hf, which belong on the remote host.
 # On another host: vrl_ssh.sh script <alias> --workspace <dir> --limit 0 -- setup_clis.sh install --only uv,hf --workspace <dir>
 #
 # Everything runs inside main(), so that bash reads the whole script before running it when the

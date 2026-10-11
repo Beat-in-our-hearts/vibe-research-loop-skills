@@ -10,79 +10,60 @@ usage() {
 Usage: vrl_ssh.sh <action> <alias> [options] [-- <command> | -- <script> [args...] | -- <path>...]
 
 Actions:
-  resolve   Print the host name, user, port, and jump host the alias resolves to, without connecting.
-  check     Check that the master is up and the remote host answers through it; print the time the
-            round trip took.
-  connect   check; if it fails, close the old master, the one this script starts, and start a new one,
-            then check again. It never asks for a password: if the login needs one, a passphrase, or a
-            second factor, it prints the command for the user to run in their own terminal.
-  run       Run one shell command in the remote workspace, with its .env loaded. The command is the one
-            string after `--`, sent as it is on the standard input of a remote bash, so it needs no
-            quoting of its own and may span several lines; it gets no input itself. Give `-` in its
-            place to read it from standard input, as from a quoted heredoc, so that a script written
-            on the remote host, quotes and $ signs included, reaches it unchanged. It runs any
-            command: never allow it without a prompt.
-  script    Run one of the scripts next to this one on the remote host (launch_run.sh, resources.sh,
-            gpu_hours.py, setup_clis.sh), with the arguments after its name. With --workspace, it runs
-            in the remote workspace with its .env loaded; without, in the remote home directory. It
-            runs whatever those scripts run: launch_run.sh runs any command in its free form, so allow
-            it without a prompt only in its --plan form.
-  sync      Copy the commits of checkouts here to their mirrors in the remote workspace, at the same
-            paths. Each path after `--` is `.`, the workspace repository, or a checkout in it: a
-            folder at its root such as main_repo, worktrees/<branch>, or ref_repos/<repo>; give a
-            worktree's own checkout in the same call or earlier. Only commits travel, so a checkout
-            must have no change, staged or not, and no untracked file that is not ignored. Each
-            mirror then holds that commit with no branch, and the sync prints its pin,
-            `synced <path> code=<path>@<commit> diff=clean`, and for `.` the line
-            `sha256 <plan> <hash>` for each plan file. It refuses a checkout, changing nothing for it,
-            while a run that is still going or a launch uses it, while its mirror holds changes no
-            sync made, and for submodules, Git LFS files, or a remote login that prints to standard
-            output; the paths before it in the same call are synced already. With --commit, it
-            copies that commit of the one checkout named, whatever is checked out here, such as a
-            plan's commit after a later sync moved the mirror. Run it from the workspace root.
-  read      Print the last lines of a text file in the remote workspace, under logs/, runs/, or tmp/,
-            at most their last 64 KB, or list a folder there. It changes nothing.
-  fetch     Copy up to 10 files from the remote workspace to tmp/fetched/<path> here, readable by you
-            only: figures (.png, .jpg, .jpeg, .svg, .pdf) under runs/ or tmp/, or a lock file under tmp/
-            (uv.lock, poetry.lock, pdm.lock, pixi.lock, Pipfile.lock, conda-lock.yml, requirements*.txt).
-            Run it from the workspace root.
+  resolve  Print the alias's host name, user, port, and jump host, without connecting.
+  check    Check that the master is up and the host answers; print the round trip's time.
+  connect  check; if that fails, restart the master and check again. If the login needs a password,
+           a passphrase, or a second factor, it exits 3.
+  run      Run the string after `--` as it is, in the remote workspace with its .env and no input;
+           `-` reads it from standard input, such as a quoted heredoc. Never allow it without a prompt.
+  script   Run one of the scripts next to this one (launch_run.sh, resources.sh, gpu_hours.py,
+           setup_clis.sh) on the remote host, in the remote workspace with its .env, or in the
+           remote home without --workspace. Allow launch_run.sh without a prompt only in its
+           --plan form.
+  sync     Copy the commits of the checkouts after `--` to their mirrors, and print their pins and
+           plan hashes. Each is `.`, the workspace repository, or a checkout in it, such as
+           main_repo, worktrees/<branch>, or ref_repos/<repo>; name a worktree's own checkout first.
+           Only commits travel: no staged or unstaged change, and no untracked file that is not
+           ignored. It refuses a checkout while a run or a launch uses it, while its mirror holds
+           changes no sync made, and for submodules, Git LFS files, or a remote login that prints
+           to standard output.
+  read     Print the end of a text file under logs/, runs/, or tmp/, at most 64 KB, or list a
+           folder there. It changes nothing.
+  fetch    Copy up to 10 files to tmp/fetched/<path> here: figures (.png, .jpg, .jpeg, .svg, .pdf)
+           under runs/ or tmp/, or lock files under tmp/ (uv.lock, poetry.lock, pdm.lock,
+           pixi.lock, Pipfile.lock, conda-lock.yml, requirements*.txt).
+Run sync and fetch from the workspace root.
 
 Options:
-  --workspace DIR  The remote workspace, as an absolute path. run, sync, read, and fetch need it.
-  --limit S        The time limit of the whole call, in seconds (default: 15 for check and connect,
-                   60 otherwise; 0 for none, as the setup script's login or a first large sync needs).
-                   Keep it 5 seconds below the agent's own limit for a shell call.
-  --step-limit S   The remote time limit of the command (default: --limit minus 10; 0 for none).
-  --no-env         With --workspace: do not load its .env, as before setup has written it.
-  --lines N        read: how many lines from the end of the file (default 100, at most 2000).
-  --max-mb N       fetch: the largest file to copy, in MB (default 20).
-  --commit HASH    sync: the commit to copy, in place of what is checked out here.
+  --workspace DIR  The remote workspace, an absolute path; run, sync, read, and fetch need it.
+  --limit S        The call's time limit in seconds (default 15 for check and connect, else 60; 0 for
+                   none, as for the setup login or a first large sync). Keep it 5 seconds below the
+                   agent's own limit for a shell call.
+  --step-limit S   The remote command's time limit (default --limit minus 10; 0 for none).
+  --no-env         With --workspace: load no .env, before setup has written it.
+  --lines N        read: lines from the end (default 100, at most 2000).
+  --max-mb N       fetch: the largest file, in MB (default 20).
+  --commit HASH    sync: copy this commit of the one checkout named, not what is checked out here.
 
-The alias must be a Host entry of ~/.ssh/config; when docs/AGENTS/remote.md exists here, it must be the
-alias of the line that names both `ssh <alias>` and `Host <alias>`. No client logs in by itself: every
-one goes through the master's socket, with ProxyCommand=false, so it fails when the master is gone.
-Every call prints `__EXIT <code>` as its last line, on a line of its own. For run and script, the code
-is the remote command's own, unless the line above it starts with `vrl_ssh:`. Exit codes:
-  0    done; for run and script, the command's own exit code otherwise
-  1    the remote host, or the master, does not answer: run connect, or stop and report
-  2    bad arguments, or a folder or alias that the rules do not allow
-  3    connect: the login needs the user, who runs the printed command in their own terminal;
-       sync, read, fetch: refused, with the reason; nothing changed for that path, but the paths
-       before it in the same call are done
-  4    sync, fetch: the copy or a remote step failed; sync again once the cause is fixed
+The alias must be a Host entry of ~/.ssh/config, and the one in docs/AGENTS/remote.md if it exists.
+Every action but resolve needs the master. Remote commands get VRL_REMOTE=1, by which the scripts
+next to this one tell the remote host from the local machine, where they refuse to run; never set
+it yourself. Every call ends with a line `__EXIT <code>`; for run and script, the code is the
+remote command's, unless the line above starts with `vrl_ssh:`.
+Exit codes:
+  0    done
+  1    no answer from the host or the master: run connect, or stop and report
+  2    bad arguments, or a folder or alias the rules do not allow
+  3    connect: the user must run the printed command in their own terminal; sync, read, fetch:
+       refused, with the reason; nothing changed for that path, but the paths before it are done
+  4    sync, fetch: a copy or a remote step failed; try again once the cause is fixed
   5    the host key could not be verified: stop and report; never turn off host-key checking
-  6    no master is up: run connect first
-  7    the master hangs: run connect
-  98   the remote workspace has no .env: pass --no-env if setup has not written it yet
+  6, 7 no master is up, or it hangs: run connect
+  98   the remote workspace has no .env: --no-env is only for before setup writes it
   124  a time limit cut the call
-  129, 130, 143  the call was ended by SIGHUP, SIGINT, or SIGTERM
+  129, 130, 143  ended by SIGHUP, SIGINT, or SIGTERM
   255  ssh itself failed
-Every remote command gets VRL_REMOTE=1. By it, launch_run.sh, resources.sh, gpu_hours.py, and setup_clis.sh tell
-the remote host from the local machine of a remote-mode workspace, where they refuse to run, since that machine
-runs no code; never set it yourself.
-The control socket lives in a folder only you can open: $XDG_RUNTIME_DIR/vrl-ssh, ~/.cache/vrl-ssh,
-or /tmp/vrl-ssh-<uid>, the first short enough for a socket path. Needs bash 3.2 or later; the remote
-login shell must be of the sh family, such as bash, zsh, or dash.
+Needs bash 3.2 or later, and a remote login shell of the sh family, such as bash, zsh, or dash.
 EOF
 }
 

@@ -1,33 +1,27 @@
 #!/usr/bin/env python3
-"""Count the single-GPU hours that runs took, from the headers and footers of their logs
-(docs/AGENTS/log_template.md), to count what an idea's budget has used.
+"""Count the single-GPU hours that runs took, from the headers and footers of their logs, to count
+what an idea's budget has used.
 
 Usage: gpu_hours.py [--json] [--since TIME] [--until TIME] <log or folder>...
 
     Give the log folders of the idea's experiments, such as logs/<date>-<name>/, or single logs.
     Every regular file under a folder that holds a log header counts, whatever its name.
-
-    A run counts from its `started` line to its `finished` line, times the number of GPUs on its
-    `resources` line. Only a real header counts: its lines come before the stdout marker, and when it
-    has a `run-id`, only an end marker with the same id closes it, so a program's own output cannot
-    open or close a run. A run with no footer counts up to now while its process is alive; otherwise up
-    to the next start in the same log, as an upper bound, or else to the log's last write.
-
-    Hours that cannot be counted are never dropped silently: a run whose GPUs cannot be read, an
-    unreadable time, or a file that cannot be read is listed, its hours are reported apart as
-    unknown, and the script exits with code 3.
+    A run counts from its `started` line to its `finished` line, times the GPUs on its `resources`
+    line. Only a header before the stdout marker counts, and one with a `run-id` is closed only by
+    an end marker with that id. A run with no footer counts up to now while it is alive, else up to
+    the next start in its log, as an upper bound, or to the log's last write.
 
     --json         Print JSON instead of tables.
     --since TIME   Count only the hours after TIME, such as `2026-10-08 22:00 +04:00`.
     --until TIME   Count only the hours before TIME.
 
-Run it where the logs are, on every machine that ran the idea's experiments; the totals are kept
-apart per machine, by the name on each `resources` line, so logs synced from another machine are
-counted once. In remote mode:
+Run it where the logs are, on every machine that ran the experiments; totals are kept per machine,
+by the name on each `resources` line, so logs synced from another machine count once. In remote mode:
     vrl_ssh.sh script <alias> --workspace <dir> -- gpu_hours.py logs/<date>-<name>/
 
-Exit codes: 0 counted everything; 2 bad arguments; 3 some hours could not be counted.
-Needs Python 3.6 or later, and nothing outside its standard library.
+Exit codes: 0 counted everything; 2 bad arguments; 3 some hours could not be counted (unreadable
+GPUs, time, or file): it lists them and reports their hours apart as unknown. Needs Python 3.6 or
+later, and nothing else.
 """
 
 import datetime

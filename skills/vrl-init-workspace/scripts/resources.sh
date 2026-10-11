@@ -13,36 +13,24 @@ usage() {
 Usage: resources.sh [--allowed IDS] [--logs DIR] [--path DIR] [--free-mib N] [--max-util P]
                     [--samples N] [--limit S] [--rows]
 
-Prints one table row per GPU, then memory, then storage, and below the table:
-  free: <ids>        GPUs a run may start on now, or "none", or "unknown (<reason>)"
-  not free: <list>   each other allowed GPU with the reason, such as a run, a process, or MIG
-  claimed: <list>    GPUs that a running log claims, with the run
-  note: <text>       anything that limits what the lines above can tell
-
-A GPU is free only when all of these hold, in every sample:
-  - nvidia-smi answers in time and lists its processes without an error;
-  - no process runs on it, its memory use is below --free-mib, and its utilization is at most
-    --max-util;
-  - MIG is off on it;
-  - no running log claims it: a log under --logs that has no footer yet, that one of your processes
-    still writes, and whose header names the GPU;
-  - it is among --allowed, when given.
-Free is "unknown" whenever one of these cannot be told, on a machine with a Slurm scheduler, and when
-nvidia-smi lists a GPU it cannot read, since the GPU numbers may then have moved.
+Prints a table row per GPU, then memory and storage, then the lines `free:` (GPUs a run may start
+on now, "none", or "unknown (<reason>)"), `not free:` (each other allowed GPU, with the reason),
+`claimed:` (GPUs a running log claims), and `note:` (what limits these lines). A GPU is free only if
+nvidia-smi answers in time and lists its processes without error, MIG is off on it, and no running
+log claims it: a log under --logs with no footer yet, still written by one of your processes, whose
+header names the GPU. Free is "unknown" when this cannot be told, under Slurm, or when nvidia-smi
+lists a GPU it cannot read. Other users' processes show by user name only.
 
   --allowed IDS   The GPU ids experiments may use, from docs/AGENTS/machine.md, such as 0,1 or 0-3.
   --logs DIR      The logs folder (default: logs, if it exists).
-  --path DIR      A folder on the filesystem that holds the outputs (default: runs, if it exists,
-                  else .). Its row is the filesystem from df, not the quota: run the quota command
-                  of docs/AGENTS/machine.md for that.
-  --free-mib N    Memory below which a GPU without processes may count as free (default 256).
-  --max-util P    Utilization in percent up to which it may count as free (default 5).
-  --samples N     Samples of each GPU, 2 seconds apart (default 2).
-  --limit S       The time limit of the whole script, in seconds (default 45); each nvidia-smi call
-                  gets at most 15 of them.
-  --rows          Print the rows only, without the table header, to put them under task rows.
-
-Processes of other users are shown by user name only, never by command line.
+  --path DIR      A folder on the outputs' filesystem (default: runs, if it exists, else .); its
+                  row shows df, not the quota.
+  --free-mib N    Memory use in MiB below which a GPU with no process may be free (default 256).
+  --max-util P    Utilization in percent up to which it may be free (default 5).
+  --samples N     Samples, 2 seconds apart, in each of which a free GPU must be free (default 2).
+  --limit S       The time limit of the whole script, in seconds (default 45), at most 15 per
+                  nvidia-smi call.
+  --rows          Print the rows only, without the table header.
 Exit codes: 0 done; 2 bad arguments.
 EOF
 }
