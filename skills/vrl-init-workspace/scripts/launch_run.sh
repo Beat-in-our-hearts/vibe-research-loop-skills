@@ -100,7 +100,7 @@ main() {
 			--owner) sync_owner="${2:-}"; shift ;;
 			-h | --help) usage; return 0 ;;
 			--) shift; break ;;
-			*) err "Unknown argument: $1"; return 2 ;;
+			*) err "Unknown argument: $1; see launch_run.sh --help"; return 2 ;;
 		esac
 		shift
 	done
@@ -111,9 +111,9 @@ main() {
 		return 2
 	fi
 	if [ -n "$sync_prepare$sync_apply" ]; then
-		[ -n "${VRL_REMOTE:-}" ] || { err "--sync-prepare and --sync-apply run only on the remote host, through vrl_ssh.sh sync"; return 2; }
+		[ -n "${VRL_REMOTE:-}" ] || { err "--sync-prepare and --sync-apply run only on the remote host, through vrl_ssh.sh sync: run that instead"; return 2; }
 		if [ "$plan_given$pin_given$status$log_given$code_given$outputs_given" != 000000 ] || [ -n "$run$plan_sha$session$gpus" ] || [ $# -gt 0 ]; then
-			err "--sync-prepare and --sync-apply are vrl_ssh.sh sync's own steps, and take no other form's options"
+			err "--sync-prepare and --sync-apply are vrl_ssh.sh sync's own steps, and take no other form's options: never run them yourself"
 			return 2
 		fi
 	fi
@@ -213,26 +213,26 @@ main() {
 		return 3
 	fi
 	if grep -Eiq -- "$SECRET_RE" <<<"$cmd"; then
-		err "The command seems to hold a secret, which the log header would record: keep it out of the command."
+		err "The command seems to hold a secret, which the log header would record: keep it out of the command, and let the tool use the user's own login, such as hf auth login."
 		return 3
 	fi
 	if [ -n "$session" ] && ! command -v tmux >/dev/null 2>&1; then
-		err "tmux is not installed"
+		err "tmux is not installed: use --nohup, or ask the user to install tmux"
 		return 2
 	fi
 	local log_path="$log"
 	case "$log_path" in /*) ;; *) log_path="$ws/$log_path" ;; esac
 	# A symlink would send the log or the outputs elsewhere, such as into a file of the user's.
 	if [ -L "$log_path" ]; then
-		err "The log is a symlink: $log"
+		err "The log is a symlink, which would send its lines elsewhere: $log; tell the user"
 		return 3
 	fi
 	if [ "$plan_given" -gt 0 ] &&
 		{ [ -L "$ws/logs/$PLAN_BASE" ] || [ -L "$ws/runs/$PLAN_BASE" ] || [ -L "$ws/runs/$PLAN_BASE/$run" ]; }; then
-		err "logs/$PLAN_BASE, runs/$PLAN_BASE, or runs/$PLAN_BASE/$run is a symlink: the run's log and outputs must stay where the plan puts them"
+		err "logs/$PLAN_BASE, runs/$PLAN_BASE, or runs/$PLAN_BASE/$run is a symlink: the run's log and outputs must stay where the plan puts them: tell the user"
 		return 3
 	fi
-	mkdir -p "$(dirname "$log_path")" || { err "Could not create the log's folder"; return 1; }
+	mkdir -p "$(dirname "$log_path")" || { err "Could not create the log's folder: fix the cause, such as a full disk, then launch again"; return 1; }
 	if [ -n "${VRL_REMOTE:-}" ]; then
 		# A sync looks for runs in logs/ itself, not in a symlinked folder below it or outside it.
 		case "$(cd "$(dirname "$log_path")" && pwd -P)/" in
@@ -257,14 +257,14 @@ main() {
 	# The checkout and the pin are checked under the lock, so that no sync can change the code between
 	# the check and the start; a sync, for its part, waits while a launch holds a lock.
 	if [ "$code" != none ]; then
-		git -C "$code" rev-parse --git-dir >/dev/null 2>&1 || { err "Not a git checkout: $code"; return 2; }
+		git -C "$code" rev-parse --git-dir >/dev/null 2>&1 || { err "Not a git checkout: $code; name a checkout, or none, and in remote mode sync it first"; return 2; }
 		local top sync_lock
 		top="$(cd "$code" 2>/dev/null && cd "$(git_safe . rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null && pwd -P)" ||
-			{ err "Not a git checkout: $code"; return 2; }
+			{ err "Not a git checkout: $code; name a checkout, or none, and in remote mode sync it first"; return 2; }
 		case "$top" in
 			"$ws") code=. ;;
 			"$ws"/*) code="${top#"$ws"/}" ;;
-			*) [ -z "${VRL_REMOTE:-}" ] || { err "The checkout must be in the remote workspace: $code"; return 3; } ;;
+			*) [ -z "${VRL_REMOTE:-}" ] || { err "The checkout must be in the remote workspace, where vrl_ssh.sh sync puts it: $code"; return 3; } ;;
 		esac
 		sync_lock="$(git_dir_of "$code")/vrl-sync.lock"
 		if [ -d "$sync_lock" ] && [ -z "$(find "$sync_lock" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
@@ -277,9 +277,9 @@ main() {
 		now_pin="$(print_pin "$code")" || return 1
 		if [ "$now_pin" != "code=$code@$PLAN_COMMIT diff=$PLAN_DIFF" ] && ! pin_matches "$now_pin" "$code" "$PLAN_COMMIT" "$PLAN_DIFF"; then
 			if [ -n "${VRL_REMOTE:-}" ]; then
-				err "The mirror of $code is now $now_pin, not the commit the plan pins: a later sync moved it, or a run wrote files into it. Sync the plan's commit back with vrl_ssh.sh sync --commit, which needs no new approval while the plan is unchanged; a change to the code or a config needs one."
+				err "The mirror of $code is now $now_pin, not the plan's pin: a later sync moved it, or a run wrote files into it. Sync the plan's commit back with vrl_ssh.sh sync --commit; only a change to the code or a config needs a new approval."
 			else
-				err "The checkout $code changed since the plan was approved: it is now $now_pin; git -C $code status shows what changed, which may be a file a run wrote. A change to the code or a config needs a new approval."
+				err "The checkout $code changed since the plan was approved: it is now $now_pin; git -C $code status shows what changed, which may be a file a run wrote. Show the user: a change to the code or a config needs a new approval."
 			fi
 			return 3
 		fi
@@ -292,14 +292,14 @@ main() {
 	if [ -n "$session" ]; then
 		if ! tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -Fxq -- "$session"; then
 			if [ "$new_session" = 1 ]; then
-				tmux new-session -d -s "$session" -c "$ws" || { err "Could not create the tmux session $session"; return 1; }
+				tmux new-session -d -s "$session" -c "$ws" || { err "Could not create the tmux session $session: start it with the command in docs/AGENTS/machine.md, then launch again"; return 1; }
 			else
-				err "The tmux session $session does not exist: start it as docs/AGENTS/machine.md says, then launch again."
+				err "The tmux session $session does not exist: start it with the command in docs/AGENTS/machine.md, then launch again."
 				return 2
 			fi
 		fi
 		if tmux list-windows -t "$session:" -F '#{window_name}' 2>/dev/null | grep -Fxq -- "$window"; then
-			err "$session:$window already exists: the run is still there. Check it before starting it again."
+			err "$session:$window already exists, so the run is still going: monitor it, and never start a second copy."
 			return 3
 		fi
 	fi
@@ -311,11 +311,11 @@ main() {
 		case "$state" in
 			open*)
 				if run_alive "$log_path" "$last_pid" "$last_id"; then
-					err "Run $last_id still writes this log: it is still going. Check it before starting it again."
+					err "Run $last_id still writes this log, so it is still going: monitor it, and never start a second copy."
 					return 3
 				fi
 				[ "$restart" = 1 ] || {
-					err "The log's last run has no footer and no process: it crashed or was killed. Pass --restart to start it again."
+					err "The log's last run has no footer and no process, so it crashed or was killed: read the end of its log, then pass --restart to start it again."
 					return 3
 				}
 				close_dead_run "$log_path" "$last_id"
@@ -328,7 +328,7 @@ main() {
 				;;
 			finished*)
 				[ "$restart" = 1 ] || {
-					err "The log's last run ended with exit code ${state#finished}: pass --restart to start it again, once its cause is fixed."
+					err "The log's last run ended with exit code ${state#finished}: read its log, and pass --restart to start it again once the cause is fixed."
 					return 3
 				}
 				;;
@@ -339,7 +339,7 @@ main() {
 	local code_line="none" patch=""
 	if [ "$code" != none ]; then
 		local branch commit state_word="clean"
-		commit="$(git_safe "$code" rev-parse --short=12 HEAD 2>/dev/null)" || { err "Not a git checkout: $code"; return 2; }
+		commit="$(git_safe "$code" rev-parse --short=12 HEAD 2>/dev/null)" || { err "Not a git checkout: $code; name a checkout, or none, and in remote mode sync it first"; return 2; }
 		branch="$(git_safe "$code" rev-parse --abbrev-ref HEAD 2>/dev/null)"
 		local record
 		record="$(git_dir_of "$code")/vrl-sync.branch"
@@ -356,7 +356,7 @@ main() {
 		fi
 		code_line="$code ($branch) @ $commit ($state_word)"
 	fi
-	[ -z "$outputs" ] || mkdir -p "$outputs" || { err "Could not create $outputs"; return 1; }
+	[ -z "$outputs" ] || mkdir -p "$outputs" || { err "Could not create $outputs: fix the cause, such as a full disk, then launch again"; return 1; }
 	if [ -z "$envname" ]; then
 		if [ -n "${VIRTUAL_ENV:-}" ]; then envname="$(basename "$VIRTUAL_ENV")"
 		elif [ -n "${CONDA_DEFAULT_ENV:-}" ]; then envname="$CONDA_DEFAULT_ENV"
@@ -389,7 +389,7 @@ main() {
 	# terminal, so that a signal to this shell, such as closing the tmux window or `kill <PID>`, reaches
 	# every process of the run: TERM first, KILL 10 seconds later. The footer waits until all have ended.
 	local runner start_child
-	runner="$(mktemp "${TMPDIR:-/tmp}/vrl-run-$run_id.XXXXXX")" || { err "Could not write the run's script"; return 1; }
+	runner="$(mktemp "${TMPDIR:-/tmp}/vrl-run-$run_id.XXXXXX")" || { err "Could not write the run's script: fix the cause, such as a full disk, then launch again"; return 1; }
 	if command -v perl >/dev/null 2>&1; then
 		start_child="perl -MPOSIX -e 'POSIX::setsid(); \$SIG{INT} = \$SIG{HUP} = \"DEFAULT\"; exec @ARGV or exit 127' bash -c $(sq "$cmd") $(sq "vrl-run-$run_id") >>$(sq "$log_path") 2>&1 </dev/null &"
 	else
@@ -437,7 +437,7 @@ RUNNER
 
 	if [ -n "$session" ]; then
 		tmux new-window -d -t "$session:" -n "$window" -c "$ws" "bash $(sq "$runner")" ||
-			{ rm -f "$runner"; err "tmux could not open the window"; return 1; }
+			{ rm -f "$runner"; err "tmux could not open a window in $session: check the session, or use --nohup, then launch again"; return 1; }
 	elif command -v perl >/dev/null 2>&1; then
 		# A session of its own, with SIGINT and SIGHUP back to their defaults, which `&` would ignore.
 		perl -MPOSIX -e 'POSIX::setsid(); $SIG{INT} = $SIG{HUP} = "DEFAULT"; exec @ARGV or exit 127' \
@@ -595,7 +595,7 @@ print_pin() {
 		printf 'code=none\n'
 		return 0
 	fi
-	commit="$(git_safe "$code" rev-parse --short=12 HEAD 2>/dev/null)" || { err "Not a git checkout: $code"; return 1; }
+	commit="$(git_safe "$code" rev-parse --short=12 HEAD 2>/dev/null)" || { err "Not a git checkout: $code; name a checkout, or none, and in remote mode sync it first"; return 1; }
 	checkout_dirty "$code"
 	case $? in
 		1) printf 'code=%s@%s diff=clean\n' "$code" "$commit"; return 0 ;;
@@ -625,15 +625,15 @@ pin_matches() {
 plan_load() {
 	local ws="$1" plan="$2" run="$3" want="$4" real plans copy got parsed info word
 	case "$run" in "" | [!A-Za-z0-9]* | *[!A-Za-z0-9_.-]*) err "A run name starts with a letter or digit and holds only letters, digits, ., - and _"; return 1 ;; esac
-	[ -f "$plan" ] && [ ! -L "$plan" ] || { err "No such plan file, or it is a symlink: $plan"; return 1; }
-	plans="$(cd "$ws/docs/plans" 2>/dev/null && pwd -P)" || { err "This workspace has no docs/plans/"; return 1; }
+	[ -f "$plan" ] && [ ! -L "$plan" ] || { err "No such plan file, or it is a symlink: $plan; in remote mode, sync the workspace repository first"; return 1; }
+	plans="$(cd "$ws/docs/plans" 2>/dev/null && pwd -P)" || { err "This workspace has no docs/plans/: run from the workspace root, and in remote mode sync the workspace repository first"; return 1; }
 	real="$(cd "$(dirname "$plan")" && pwd -P)/$(basename "$plan")"
 	[ "$(dirname "$real")" = "$plans" ] || { err "The plan file must sit directly in docs/plans/ of this workspace: $plan"; return 1; }
 	case "$(basename "$real")" in
 		[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.md) ;;
 		*) err "A plan file is named <date>-<ID>.md: $plan"; return 1 ;;
 	esac
-	[ -O "$real" ] || { err "The plan file is not yours: $plan"; return 1; }
+	[ -O "$real" ] || { err "The plan file is not yours: $plan; stop and report"; return 1; }
 	if [ -n "$(find "$real" \( -perm -020 -o -perm -002 \) -print 2>/dev/null)" ]; then
 		err "Others may write the plan file: $plan. Make it writable by you only, with chmod go-w, which keeps its hash."
 		return 1
@@ -643,7 +643,7 @@ plan_load() {
 	got="$(sha256_of "$copy")"
 	if [ "$(printf '%s' "$got" | tr 'A-F' 'a-f')" != "$(printf '%s' "$want" | tr 'A-F' 'a-f')" ]; then
 		rm -f "$copy"
-		err "The plan file does not have the SHA-256 recorded at approval: it changed, or the hash is wrong. A changed plan needs a new approval."
+		err "The plan file does not have the SHA-256 recorded at approval, so it changed or the hash is wrong: check the hash, and in remote mode sync the plan's commit back with vrl_ssh.sh sync --commit; a changed plan needs a new approval."
 		return 1
 	fi
 	local other
@@ -651,19 +651,19 @@ plan_load() {
 		[ -f "$other" ] && [ "$other" != "$real" ] || continue
 		if [ "$(sha256_of "$other")" = "$got" ]; then
 			rm -f "$copy"
-			err "Another plan file has the same content: $(basename "$other"). An approval holds for one plan file only."
+			err "Another plan file has the same content: $(basename "$other"). An approval holds for one plan file only: tell the user."
 			return 1
 		fi
 	done
 	# Only what a reader sees counts: no HTML comment, and run=<run> in one line only, its block's.
 	if grep -q '<!--' "$copy"; then
 		rm -f "$copy"
-		err "The plan file holds an HTML comment, which hides text from a reader: remove it, then approve the plan again."
+		err "The plan file holds an HTML comment, which hides text from a reader: remove it, then ask the user to approve the plan again."
 		return 1
 	fi
 	if [ "$(tr -d '\r' <"$copy" | grep -Ec -- "(^|[^A-Za-z0-9_])run=$(printf '%s' "$run" | sed 's/\./\\./g')([^A-Za-z0-9_.-]|\$)")" -gt 1 ]; then
 		rm -f "$copy"
-		err "The plan file names run=$run more than once: only its block's info string may."
+		err "The plan file names run=$run more than once, but only its block's info string may: fix the plan, then ask the user to approve it again."
 		return 1
 	fi
 	# A fence of three or more backticks or tildes, indented at most three spaces, opens a block, which
@@ -696,9 +696,9 @@ plan_load() {
 	')"
 	case $? in
 		0) ;;
-		3) rm -f "$copy"; err "The plan has no block for run $run: a fenced block, indented at most three spaces, whose info string holds run=$run"; return 1 ;;
-		5) rm -f "$copy"; err "The plan's block for run $run never closes"; return 1 ;;
-		*) rm -f "$copy"; err "The plan has more than one block for run $run"; return 1 ;;
+		3) rm -f "$copy"; err "The plan has no block for run $run, a fenced block indented at most three spaces whose info string holds run=$run: check the run name with --status"; return 1 ;;
+		5) rm -f "$copy"; err "The plan's block for run $run never closes: fix the plan, then ask the user to approve it again"; return 1 ;;
+		*) rm -f "$copy"; err "The plan has more than one block for run $run: fix the plan, then ask the user to approve it again"; return 1 ;;
 	esac
 	rm -f "$copy"
 	info="$(printf '%s\n' "$parsed" | head -n 1)"
@@ -716,14 +716,14 @@ plan_load() {
 			env=*) PLAN_ENV="${word#env=}" ;;
 		esac
 	done
-	[ -n "$(printf '%s' "$PLAN_CMD" | tr -d '[:space:]')" ] || { err "The plan's block for run $run is empty"; return 1; }
-	case "$PLAN_GPUS" in "" | *[!0-9]*) err "The block for run $run needs gpus=<count>"; return 1 ;; esac
-	[ -n "$PLAN_CODE" ] || { err "The block for run $run needs code=<checkout>@<commit> diff=<...>, from launch_run.sh --pin, or code=none"; return 1; }
+	[ -n "$(printf '%s' "$PLAN_CMD" | tr -d '[:space:]')" ] || { err "The plan's block for run $run is empty: fix the plan, then ask the user to approve it again"; return 1; }
+	case "$PLAN_GPUS" in "" | *[!0-9]*) err "The block for run $run needs gpus=<count>: fix the plan, then ask the user to approve it again"; return 1 ;; esac
+	[ -n "$PLAN_CODE" ] || { err "The block for run $run needs code=<checkout>@<commit> diff=<...>, from launch_run.sh --pin, or code=none: fix the plan, then ask the user to approve it again"; return 1; }
 	if [ "$PLAN_CODE" != none ]; then
 		case "$PLAN_COMMIT" in "" | *[!0-9a-f]*) PLAN_COMMIT="" ;; esac
-		[ "${#PLAN_COMMIT}" -ge 12 ] || { err "The block for run $run needs code=<checkout>@<commit>, with the 12 hex digits launch_run.sh --pin prints"; return 1; }
-		case "$PLAN_DIFF" in clean | [0-9a-f]*) ;; *) err "The block for run $run needs diff=clean or diff=<hash>, from launch_run.sh --pin"; return 1 ;; esac
-		case "$PLAN_CODE" in /* | *..* | "") err "The block's checkout must be a folder of the workspace: $PLAN_CODE"; return 1 ;; esac
+		[ "${#PLAN_COMMIT}" -ge 12 ] || { err "The block for run $run needs code=<checkout>@<commit>, with the 12 hex digits launch_run.sh --pin prints: fix the plan, then ask the user to approve it again"; return 1; }
+		case "$PLAN_DIFF" in clean | [0-9a-f]*) ;; *) err "The block for run $run needs diff=clean or diff=<hash>, from launch_run.sh --pin: fix the plan, then ask the user to approve it again"; return 1 ;; esac
+		case "$PLAN_CODE" in /* | *..* | "") err "The block's checkout must be a folder of the workspace, not $PLAN_CODE: fix the plan, then ask the user to approve it again"; return 1 ;; esac
 	fi
 }
 
@@ -809,14 +809,14 @@ gpus_busy() {
 	local ids="$1" map apps id uuid
 	command -v nvidia-smi >/dev/null 2>&1 || return 0
 	map="$(limited 15 nvidia-smi --query-gpu=index,uuid --format=csv,noheader 2>/dev/null)" ||
-		{ err "nvidia-smi failed, so whether the GPUs are free cannot be told"; return 1; }
+		{ err "nvidia-smi failed, so whether the GPUs are free cannot be told: try again in a minute; if it fails again, stop and report"; return 1; }
 	apps="$(limited 15 nvidia-smi --query-compute-apps=gpu_uuid --format=csv,noheader 2>/dev/null)" ||
-		{ err "nvidia-smi could not list the processes, so whether the GPUs are free cannot be told"; return 1; }
+		{ err "nvidia-smi could not list the processes, so whether the GPUs are free cannot be told: try again in a minute; if it fails again, stop and report"; return 1; }
 	for id in $(printf '%s' "$ids" | tr ',' ' '); do
 		uuid="$(printf '%s\n' "$map" | awk -F', *' -v i="$id" '$1 == i { print $2 }')"
-		[ -n "$uuid" ] || { err "GPU $id is not on this machine"; return 1; }
+		[ -n "$uuid" ] || { err "GPU $id is not on this machine: run resources.sh to see its GPUs"; return 1; }
 		if printf '%s\n' "$apps" | tr -d ' ' | grep -Fxq -- "$uuid"; then
-			err "GPU $id has a process on it: it is not free"
+			err "GPU $id has a process on it, so it is not free: pick a free one with resources.sh, or wait"
 			return 1
 		fi
 	done
@@ -835,11 +835,11 @@ gpu_model() {
 # an earlier diff differs.
 save_diff() {
 	local code="$1" outputs="$2" file tmp
-	mkdir -p "$outputs" || { err "Could not create $outputs"; return 1; }
-	tmp="$(mktemp "$outputs/.git_diff.XXXXXX")" || { err "Could not write in $outputs"; return 1; }
-	diff_content "$code" >"$tmp" || { err "Could not save the diff of $code"; return 1; }
+	mkdir -p "$outputs" || { err "Could not create $outputs: fix the cause, such as a full disk, then launch again"; return 1; }
+	tmp="$(mktemp "$outputs/.git_diff.XXXXXX")" || { err "Could not write in $outputs: fix the cause, such as a full disk, then launch again"; return 1; }
+	diff_content "$code" >"$tmp" || { err "Could not save the diff of $code: fix the cause, such as a full disk, then launch again"; return 1; }
 	if grep -Eiq "$SECRET_RE" "$tmp"; then
-		err "Warning: the saved diff seems to hold a secret; it is readable by you only. Check $outputs."
+		err "Warning: the saved diff seems to hold a secret; it is readable by you only. Check $outputs, and tell the user."
 	fi
 	file="$outputs/git_diff.patch"
 	if [ -f "$file" ] && ! cmp -s "$tmp" "$file"; then
@@ -875,7 +875,7 @@ plan_runs() {
 # The state of each run of a plan, or of one, and the end of its log; it changes nothing.
 plan_status() {
 	local plan="$1" one="$2" base runs r log state id pid
-	[ -f "$plan" ] || { err "No such plan file: $plan"; return 2; }
+	[ -f "$plan" ] || { err "No such plan file: $plan; in remote mode, sync the workspace repository first"; return 2; }
 	case "$(basename "$plan")" in
 		[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.md) ;;
 		*) err "A plan file is named <date>-<ID>.md: $plan"; return 2 ;;
@@ -946,17 +946,17 @@ sync_prepare() {
 	checkout_form "$dir" || { err "Not a checkout a sync may name: $dir"; return 2; }
 	is_checkout_top "$dir" && return 0
 	if [ -L "$dir" ]; then
-		err "$dir is a symlink, so it cannot be a mirror"
+		err "$dir is a symlink on the remote host, so it cannot be a mirror: tell the user"
 		return 3
 	fi
 	if [ -e "$dir" ]; then
-		[ -d "$dir" ] || { err "$dir is not a folder"; return 3; }
+		[ -d "$dir" ] || { err "$dir on the remote host is not a folder, so it cannot be a mirror: tell the user"; return 3; }
 		if [ "$dir" != . ] && [ -n "$(ls -A "$dir" 2>/dev/null)" ]; then
-			err "$dir holds files but is no git repository: move them away, then sync again."
+			err "$dir on the remote host holds files but is no git repository: show the user, who decides where they go; never touch them unless they ask."
 			return 3
 		fi
 	fi
-	mkdir -p "$dir" && git init -q --template= "$dir" || { err "Could not create the mirror $dir"; return 4; }
+	mkdir -p "$dir" && git init -q --template= "$dir" || { err "Could not create the mirror $dir: fix the cause, such as a full disk, then sync again"; return 4; }
 }
 
 # The logs of runs that use the checkout, by the code line of their open run's own header, and are
@@ -986,13 +986,13 @@ sync_apply() {
 	case "$commit" in "" | *[!0-9a-f]*) err "--sync-apply needs --commit with the full hash"; return 2 ;; esac
 	case "$branch" in "" | *[!A-Za-z0-9._/-]*) branch="HEAD" ;; esac
 	repo="${owner:-$dir}"
-	is_checkout_top "$repo" || { err "$repo is no mirror yet"; return 4; }
-	git_safe "$repo" cat-file -e "$commit^{commit}" 2>/dev/null || { err "Commit $commit did not reach $repo"; return 4; }
+	is_checkout_top "$repo" || { err "$repo is no mirror yet: sync again once; if that fails, stop and report"; return 4; }
+	git_safe "$repo" cat-file -e "$commit^{commit}" 2>/dev/null || { err "Commit $commit did not reach $repo: sync again once; if that fails, stop and report"; return 4; }
 
 	if [ -n "$owner" ] && ! is_checkout_top "$dir"; then
 		# A new worktree of the owner's mirror, made here, so that its git files hold this host's paths.
 		if [ -L "$dir" ] || { [ -e "$dir" ] && [ -n "$(ls -A "$dir" 2>/dev/null)" ]; }; then
-			err "$dir holds files but is no worktree of $owner: move them away, then sync again."
+			err "$dir on the remote host holds files but is no worktree of $owner: show the user, who decides where they go; never touch them unless they ask."
 			return 3
 		fi
 		[ ! -d "$dir" ] || rmdir "$dir"
@@ -1000,14 +1000,14 @@ sync_apply() {
 		# The registration of a worktree folder that was deleted would block the add.
 		git_safe "$owner" worktree prune 2>/dev/null
 		git_safe "$owner" -c core.autocrlf=false -c advice.detachedHead=false worktree add -q --detach \
-			"$(cd "$(dirname "$dir")" && pwd -P)/$(basename "$dir")" "$commit" || { err "Could not add the worktree $dir"; return 4; }
+			"$(cd "$(dirname "$dir")" && pwd -P)/$(basename "$dir")" "$commit" || { err "Could not add the worktree $dir: fix the cause, such as a full disk, then sync again"; return 4; }
 	else
-		is_checkout_top "$dir" || { err "$dir is no mirror yet"; return 4; }
+		is_checkout_top "$dir" || { err "$dir is no mirror yet: sync again once; if that fails, stop and report"; return 4; }
 		if [ -n "$owner" ] && [ "$(git_dir_of "$dir")" != "$(git_dir_of "$owner")/worktrees/$(basename "$(git_dir_of "$dir")")" ]; then
-			err "$dir is no worktree of $owner: move it away, then sync again."
+			err "$dir on the remote host is no worktree of $owner: show the user, who decides where it goes; never touch it unless they ask."
 			return 3
 		fi
-		gd="$(git_dir_of "$dir")" && [ -d "$gd" ] || { err "Could not find the git folder of $dir"; return 4; }
+		gd="$(git_dir_of "$dir")" && [ -d "$gd" ] || { err "Could not find the git folder of $dir: stop and report"; return 4; }
 		old="$(git_safe "$dir" rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null)"
 		pending="$gd/vrl-sync.pending"
 		prev=""
@@ -1030,7 +1030,7 @@ sync_apply() {
 			fi
 			busy="$(live_runs_of "$dir")"
 			if [ -n "$busy" ]; then
-				err "Runs still going use $dir, and its code must not change under them: sync it once they end, or put the change in a worktree of its own. Their logs:"
+				err "Runs still going use $dir, and its code must not change under them: sync it once they end, or, with the user's consent, put the change in a worktree of its own. Their logs:"
 				printf '%s\n' "$busy" | head -n 20 >&2
 				return 3
 			fi
@@ -1042,7 +1042,7 @@ sync_apply() {
 					fi
 				done | head -n 40)"
 				if [ -n "$there" ]; then
-					err "The mirror $dir holds changes that no sync made, such as files a run wrote there or an edit on this host: show them to the user, who decides what to keep, then sync again."
+					err "The mirror $dir holds changes that no sync made, such as files a run wrote there or an edit on the remote host: show the user this list, who decides what to keep; never touch the mirror's files unless they ask."
 					printf '%s\n' "$there" >&2
 					return 3
 				fi
@@ -1053,7 +1053,7 @@ sync_apply() {
 					1) ;;
 					2) return 3 ;;
 					*)
-						err "The mirror $dir holds changes that no sync made, such as files a run wrote there or an edit on this host: show them to the user, who decides what to keep, then sync again."
+						err "The mirror $dir holds changes that no sync made, such as files a run wrote there or an edit on the remote host: show the user this list, who decides what to keep; never touch the mirror's files unless they ask."
 						git_safe "$dir" status --short --untracked-files=all 2>/dev/null | head -n 40 >&2
 						return 3
 						;;
@@ -1063,7 +1063,7 @@ sync_apply() {
 					if [ -e "$f" ] || [ -L "$f" ]; then printf '%s\n' "$f"; fi
 				done) | head -n 20)"
 				if [ -n "$there" ]; then
-					err "The folder $dir already holds files of the commit, which a first sync would overwrite: move them away, then sync again."
+					err "The folder $dir already holds files of the commit, which a first sync would overwrite: show the user this list, who decides; never touch them unless they ask."
 					printf '%s\n' "$there" >&2
 					return 3
 				fi
@@ -1076,10 +1076,10 @@ sync_apply() {
 		fi
 	fi
 
-	[ "$(git_safe "$dir" rev-parse HEAD 2>/dev/null)" = "$commit" ] || { err "The mirror $dir is not at $commit after the checkout"; return 4; }
+	[ "$(git_safe "$dir" rev-parse HEAD 2>/dev/null)" = "$commit" ] || { err "The mirror $dir is not at $commit after the checkout: sync again once; if that fails, stop and report"; return 4; }
 	checkout_dirty "$dir"
 	if [ $? != 1 ]; then
-		err "The mirror $dir differs from its commit after the checkout, such as by files the new commit no longer ignores: show the user, then sync again"
+		err "The mirror $dir differs from its commit after the checkout, such as by files the new commit no longer ignores: show the user this list, who decides; never touch the mirror's files unless they ask"
 		git_safe "$dir" status --short --untracked-files=all 2>/dev/null | head -n 40 >&2
 		return 4
 	fi

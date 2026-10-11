@@ -408,23 +408,23 @@ def main(argv):
             as_json = True
         elif a in ("--since", "--until"):
             if not args:
-                print("gpu_hours: %s needs a time" % a, file=sys.stderr)
+                print("gpu_hours: %s needs a time, such as '2026-10-08 22:00 +04:00'" % a, file=sys.stderr)
                 return 2
             t = parse_time(args.pop(0), workspace_tz())
             if t is None:
-                print("gpu_hours: cannot read the time after %s" % a, file=sys.stderr)
+                print("gpu_hours: cannot read the time after %s; give it as '2026-10-08 22:00 +04:00'" % a, file=sys.stderr)
                 return 2
             if a == "--since":
                 since = t
             else:
                 until = t
         elif a.startswith("-"):
-            print("gpu_hours: unknown argument: " + a, file=sys.stderr)
+            print("gpu_hours: unknown argument: " + a + "; see gpu_hours.py --help", file=sys.stderr)
             return 2
         else:
             targets.append(a)
     if not targets:
-        print("gpu_hours: give the log folders of the idea's experiments", file=sys.stderr)
+        print("gpu_hours: give the log folders of the idea's experiments, such as logs/<date>-<name>/", file=sys.stderr)
         return 2
     now = datetime.datetime.now(datetime.timezone.utc)
     problems, rows = [], []
@@ -478,7 +478,7 @@ def main(argv):
         print(line)
     print("Total: %.2f single-GPU hours" % known)
     if incomplete:
-        print("Incomplete: %.2f hours with unknown GPUs, and %d files not counted; see the notes above."
+        print("Incomplete: %.2f hours with unknown GPUs, and %d files not counted; see the notes above, and report these apart, as unknown."
               % (unknown, len(problems)))
     return 3 if incomplete else 0
 

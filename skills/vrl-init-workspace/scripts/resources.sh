@@ -49,7 +49,7 @@ main() {
 			--limit) limit="${2:-}"; shift ;;
 			--rows) rows_only=1 ;;
 			-h | --help) usage; return 0 ;;
-			*) err "Unknown argument: $1"; return 2 ;;
+			*) err "Unknown argument: $1; see resources.sh --help"; return 2 ;;
 		esac
 		shift
 	done
@@ -67,7 +67,7 @@ main() {
 	if [ -z "$path" ]; then
 		if [ -d runs ]; then path=runs; else path=.; fi
 	fi
-	[ -d "$path" ] || { err "No such folder: $path"; return 2; }
+	[ -d "$path" ] || { err "No such folder for --path: $path; give a folder that exists"; return 2; }
 	NOTE_LINES=""
 	if [ -z "$logs" ]; then
 		if [ -d logs ]; then logs=logs; else note "no logs folder here, so no running log can claim a GPU"; fi

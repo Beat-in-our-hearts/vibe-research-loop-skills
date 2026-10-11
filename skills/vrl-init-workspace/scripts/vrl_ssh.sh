@@ -83,7 +83,7 @@ main() {
 	case "$ACTION" in
 		resolve | check | connect | run | script | sync | read | fetch) shift ;;
 		"" | -h | --help) NO_MARKER=1; usage; return 0 ;;
-		*) err "Unknown action: $ACTION"; return 2 ;;
+		*) err "Unknown action: $ACTION; see vrl_ssh.sh --help"; return 2 ;;
 	esac
 	ALIAS="${1:-}"
 	case "$ALIAS" in
@@ -102,7 +102,7 @@ main() {
 			--step-limit) STEP_LIMIT="${2:-}"; shift ;;
 			--no-env) NO_ENV=1 ;;
 			--) shift; break ;;
-			*) err "Unknown argument: $1"; return 2 ;;
+			*) err "Unknown argument: $1; see vrl_ssh.sh --help"; return 2 ;;
 		esac
 		shift
 	done
@@ -148,7 +148,7 @@ main() {
 	# The socket's own path, as the master expands it; clients name it literally, since their
 	# ProxyCommand=false would change what %C expands to.
 	SOCK_PATH="$(ssh -G -o "ControlPath=$SOCK" "$ALIAS" 2>/dev/null | awk '$1 == "controlpath" { print $2; exit }')"
-	[ -n "$SOCK_PATH" ] || { err "ssh -G could not resolve $ALIAS"; return 2; }
+	[ -n "$SOCK_PATH" ] || { err "ssh -G could not resolve $ALIAS, so ~/.ssh/config may be broken: tell the user"; return 2; }
 	SSH=(ssh -o BatchMode=yes -o ConnectTimeout=10 -o ControlMaster=no -o ProxyCommand=false -S "$SOCK_PATH")
 
 	case "$ACTION" in
@@ -196,7 +196,7 @@ on_signal() {
 
 # Sets NEW_TMP to a new temp file that cleanup deletes.
 new_tmp() {
-	NEW_TMP="$(mktemp "${TMPDIR:-/tmp}/vrl-ssh.XXXXXX")" || { err "Could not create a temp file"; return 1; }
+	NEW_TMP="$(mktemp "${TMPDIR:-/tmp}/vrl-ssh.XXXXXX")" || { err "Could not create a temp file here, as on a full disk: stop and report"; return 1; }
 	TMP_FILES+=("$NEW_TMP")
 }
 
@@ -244,15 +244,15 @@ EOF
 		return 1
 	fi
 	[ -e docs/AGENTS/remote.md ] || return 0
-	[ -f docs/AGENTS/remote.md ] || { err "docs/AGENTS/remote.md is not a file"; return 1; }
+	[ -f docs/AGENTS/remote.md ] || { err "docs/AGENTS/remote.md is not a file: stop and report"; return 1; }
 	# The line that names the remote host holds both code spans, `ssh <alias>` and `Host <alias>`.
 	rules="$(sed -n 's/.*`ssh \([A-Za-z0-9._-]*\)`.*`Host \1`.*/\1/p' docs/AGENTS/remote.md | sort -u)"
 	count="$(printf '%s\n' "$rules" | grep -c .)"
 	if [ "$count" != 1 ]; then
-		err "docs/AGENTS/remote.md must name the remote host on one line, as \`ssh <alias>\` and \`Host <alias>\`"
+		err "docs/AGENTS/remote.md must name the remote host on one line, as \`ssh <alias>\` and \`Host <alias>\`: tell the user"
 		return 1
 	fi
-	[ "$rules" = "$ALIAS" ] || { err "docs/AGENTS/remote.md names the alias $rules, not $ALIAS"; return 1; }
+	[ "$rules" = "$ALIAS" ] || { err "docs/AGENTS/remote.md names the alias $rules, not $ALIAS: use $rules"; return 1; }
 }
 
 # The seconds left of the call's limit, at least 1; 0 when the call has no limit.
@@ -318,13 +318,13 @@ sock_dir() {
 			return 0
 		fi
 	done
-	err "No folder of yours for the control socket: ~/.cache/vrl-ssh and /tmp/vrl-ssh-$(id -u) are missing, not yours, or symlinks"
+	err "No folder of yours for the control socket: ~/.cache/vrl-ssh and /tmp/vrl-ssh-$(id -u) are missing, not yours, or symlinks: tell the user"
 	return 1
 }
 
 resolve() {
 	local conf host
-	conf="$(ssh -G "$ALIAS" 2>/dev/null)" || { err "ssh -G could not resolve $ALIAS"; return 1; }
+	conf="$(ssh -G "$ALIAS" 2>/dev/null)" || { err "ssh -G could not resolve $ALIAS, so ~/.ssh/config may be broken: tell the user"; return 1; }
 	printf '%s\n' "$conf" | awk '$1 == "hostname" || $1 == "user" || $1 == "port" || $1 == "proxyjump" { print $1 ": " $2 }'
 	host="$(printf '%s\n' "$conf" | awk '$1 == "hostname" { print $2; exit }')"
 	[ "$host" != "$ALIAS" ] || printf 'note: the host name equals the alias\n'
@@ -350,8 +350,8 @@ need_master() {
 	rc=$?
 	case "$rc" in
 		0) return 0 ;;
-		124) err "The master does not answer its socket: run connect"; return 7 ;;
-		*) err "No master is up for $ALIAS: run connect first"; return 6 ;;
+		124) err "The master does not answer its socket: run connect once; if that fails, stop and report"; return 7 ;;
+		*) err "No master is up for $ALIAS: run connect once; if that fails, stop and report"; return 6 ;;
 	esac
 }
 
@@ -371,13 +371,13 @@ check_connection() {
 	rc=$?
 	case "$rc" in
 		0) ;;
-		124) printf 'connection: the master does not answer its socket\n'; return 7 ;;
-		*) printf 'connection: no master is up for %s\n' "$ALIAS"; return 6 ;;
+		124) printf 'connection: the master does not answer its socket: run connect once; if that fails, stop and report\n'; return 7 ;;
+		*) printf 'connection: no master is up for %s: run connect once; if that fails, stop and report\n' "$ALIAS"; return 6 ;;
 	esac
 	round_trip
 	rc=$?
 	if [ "$rc" -ne 0 ]; then
-		printf 'connection: %s does not answer through the master\n' "$ALIAS"
+		printf 'connection: %s does not answer through the master: run connect once; if that fails, stop and report\n' "$ALIAS"
 		[ "$rc" = 124 ] && return 124
 		return 1
 	fi
@@ -431,11 +431,11 @@ connect() {
 			return 5
 		fi
 		if grep -qiE 'Permission denied|passphrase|password|keyboard-interactive|verification code' "$errors"; then
-			err "The login needs the user. Ask them to run this in their own terminal, then run connect again:"
+			err "The login needs the user: ask them to run this in their own terminal, wait until they say it is done, then run connect again:"
 			printf '  %s %s\n' "${MASTER[*]}" "$ALIAS" >&2
 			return 3
 		fi
-		err "The master did not start: $ALIAS is unreachable"
+		err "The master did not start, as $ALIAS is unreachable: stop and report the ssh lines above"
 		[ "$rc" = 124 ] && return 124
 		[ "$rc" = 255 ] && return 255
 		return 1
@@ -446,7 +446,7 @@ connect() {
 		printf 'connection: %s answers through the new master (%s s)\n' "$ALIAS" "$ROUND_TRIP_SECONDS"
 		return 0
 	fi
-	err "The new master started, but $ALIAS does not answer through it"
+	err "The new master started, but $ALIAS does not answer through it: stop and report"
 	[ "$rc" = 124 ] && return 124
 	return 1
 }
@@ -459,7 +459,7 @@ remote_line() {
 		line="${line}cd $(sq "$WORKSPACE") && "
 		if [ "$NO_ENV" = 0 ]; then
 			# .env is read as literal NAME=value lines, never run, as launch_run.sh reads it.
-			line="$line{ [ -f .env ] || { echo 'vrl_ssh: the workspace has no .env; pass --no-env if setup has not written it yet' >&2; exit 98; }; } && "
+			line="$line{ [ -f .env ] || { echo 'vrl_ssh: the remote workspace has no .env: stop and report; --no-env is only for setup, before it writes .env' >&2; exit 98; }; } && "
 			line="$line"'while IFS= read -r _vrl_l || [ -n "$_vrl_l" ]; do _vrl_l=${_vrl_l%"$(printf "\r")"}; case "$_vrl_l" in ""|"#"*) continue;; esac; _vrl_n=${_vrl_l%%=*}; case "$_vrl_n" in "$_vrl_l"|""|[0-9]*|*[!A-Za-z0-9_]*|_vrl_*|LD_*|DYLD_*|BASH_*|ENV|HOME|PATH|CDPATH|IFS|PS4|PROMPT_COMMAND|GLOBIGNORE|SHELLOPTS|BASHOPTS|POSIXLY_CORRECT|PYTHONSTARTUP|PYTHONHOME|PYTHONINSPECT|PERL5OPT|PERL5LIB|PERLLIB|RUBYOPT|NODE_OPTIONS|JAVA_TOOL_OPTIONS|_JAVA_OPTIONS) continue;; esac; _vrl_v=${_vrl_l#*=}; case "$_vrl_v" in \"*\") _vrl_v=${_vrl_v#\"}; _vrl_v=${_vrl_v%\"};; \'"'"'*\'"'"') _vrl_v=${_vrl_v#\'"'"'}; _vrl_v=${_vrl_v%\'"'"'};; esac; export "$_vrl_n=$_vrl_v"; done < .env && unset _vrl_l _vrl_n _vrl_v CDPATH && '
 		fi
 	fi
@@ -493,7 +493,7 @@ run_script() {
 	esac
 	file="$SCRIPT_DIR/$(basename "$name")"
 	if [ ! -f "$file" ] || [ -L "$file" ] || [ ! -O "$file" ]; then
-		err "$(basename "$name") next to vrl_ssh.sh is missing, a symlink, or not yours"
+		err "$(basename "$name") next to vrl_ssh.sh is missing, a symlink, or not yours: stop and report"
 		return 2
 	fi
 	new_tmp || return 1
@@ -542,7 +542,7 @@ sync_paths() {
 		[ $# -eq 1 ] || { err "--commit goes with one checkout"; return 2; }
 		case "$SYNC_COMMIT" in "" | *[!0-9a-fA-F]*) err "--commit takes a commit hash"; return 2 ;; esac
 	fi
-	case "$WORKSPACE" in *:*) err "sync needs a remote workspace path without a colon"; return 2 ;; esac
+	case "$WORKSPACE" in *:*) err "sync needs a remote workspace path without a colon: tell the user"; return 2 ;; esac
 	[ $# -ge 1 ] || { err "Give the checkouts to sync after --, such as . or main_repo"; return 2; }
 	[ -d docs/AGENTS ] || { err "Run sync from the workspace root, the folder that holds docs/AGENTS/"; return 2; }
 	for p in "$@"; do
@@ -554,7 +554,7 @@ sync_paths() {
 	quiet="$NEW_TMP"
 	with_limit /dev/null "${SSH[@]}" -n "$ALIAS" true >"$quiet" 2>/dev/null || { rc=$?; sync_rc "$rc" "checking the remote login"; return; }
 	if [ -s "$quiet" ]; then
-		err "The remote login prints to standard output even for a command, which breaks git's copy of commits: ask the user to quiet their shell startup files on the remote host for non-interactive logins. It printed:"
+		err "The remote login prints to standard output even for a command, which breaks git's copy of commits: ask the user to quiet their shell startup files on the remote host for non-interactive logins, and wait. It printed:"
 		head -c 300 "$quiet" >&2
 		return 3
 	fi
@@ -573,32 +573,32 @@ sync_one() {
 	local p="$1" here top commit branch dirty git_dir common owner="" slug repo target trace rc idx
 	here="$(pwd -P)"
 	top="$(lgit "$p" rev-parse --show-toplevel 2>/dev/null)" && [ "$(cd "$top" && pwd -P)" = "$(cd "$p" && pwd -P)" ] ||
-		{ err "$p is not the top of a git checkout"; return 3; }
+		{ err "$p is not the top of a git checkout: name the checkout's top folder, such as main_repo"; return 3; }
 	if [ -n "$SYNC_COMMIT" ]; then
-		commit="$(lgit "$p" rev-parse -q --verify "$SYNC_COMMIT^{commit}" 2>/dev/null)" || { err "$p has no commit $SYNC_COMMIT"; return 3; }
+		commit="$(lgit "$p" rev-parse -q --verify "$SYNC_COMMIT^{commit}" 2>/dev/null)" || { err "$p has no commit $SYNC_COMMIT: check the hash"; return 3; }
 		dirty=""
 	else
-		commit="$(lgit "$p" rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null)" || { err "$p has no commit yet"; return 3; }
-		dirty="$(lgit "$p" status --porcelain -z --untracked-files=all 2>/dev/null | tr '\0' '\n')" || { err "git status failed in $p"; return 3; }
+		commit="$(lgit "$p" rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null)" || { err "$p has no commit yet: commit first, as the git rules allow, then sync again"; return 3; }
+		dirty="$(lgit "$p" status --porcelain -z --untracked-files=all 2>/dev/null | tr '\0' '\n')" || { err "git status failed in $p: stop and report"; return 3; }
 		# Files the OS writes by itself, such as Finder's .DS_Store, are never copied and block nothing.
 		dirty="$(printf '%s
 ' "$dirty" | grep -Ev '^\?\? (.*/)?(\.DS_Store|\._[^/]*|Thumbs\.db|desktop\.ini)$')"
 	fi
 	if [ -n "$dirty" ]; then
-		err "$p has changes that are not committed, and only commits are copied: commit them first, as the git rules allow, then sync again."
+		err "$p has changes that are not committed, and only commits are copied: commit them first, as the git rules allow, then sync again; never copy files another way."
 		printf '%s\n' "$dirty" | head -n 40 >&2
 		return 3
 	fi
 	if lgit "$p" ls-tree -r "$commit" | awk '$2 == "commit" { n++ } END { exit !n }'; then
-		err "$p has submodules, which sync does not copy: tell the user"
+		err "$p has submodules, which sync does not copy: tell the user; never copy them another way"
 		return 3
 	fi
 	# The commit's own attributes, through a temporary index: check-attr --source needs git 2.40.
 	new_tmp || return 1
 	idx="$NEW_TMP"
-	GIT_INDEX_FILE="$idx" lgit "$p" read-tree "$commit" || { err "git read-tree failed in $p"; return 3; }
+	GIT_INDEX_FILE="$idx" lgit "$p" read-tree "$commit" || { err "git read-tree failed in $p: stop and report"; return 3; }
 	if lgit "$p" ls-tree -r -z --name-only "$commit" | GIT_INDEX_FILE="$idx" lgit "$p" check-attr --cached --stdin -z filter | tr '\0' '\n' | awk 'NR % 3 == 0 && $0 == "lfs" { n++ } END { exit !n }'; then
-		err "$p has Git LFS files, which sync does not copy: keep large files under data/ on the remote host"
+		err "$p has Git LFS files, which sync does not copy: tell the user; large files belong under data/ on the remote host"
 		return 3
 	fi
 	# Traces of code run here: the local machine runs none.
@@ -609,13 +609,13 @@ sync_one() {
 	git_dir="$(cd "$p" && cd "$(lgit . rev-parse --git-dir)" && pwd -P)" || return 3
 	common="$(cd "$p" && cd "$(lgit . rev-parse --git-common-dir)" && pwd -P)" || return 3
 	if [ "$git_dir" != "$common" ]; then
-		case "$common" in */.git) owner="${common%/.git}" ;; *) err "$p is a worktree of a bare repository"; return 3 ;; esac
+		case "$common" in */.git) owner="${common%/.git}" ;; *) err "$p is a worktree of a bare repository, which sync cannot copy: tell the user"; return 3 ;; esac
 		case "$owner" in
 			"$here") owner="." ;;
 			"$here"/*) owner="${owner#"$here"/}" ;;
-			*) err "$p is a worktree of a repository outside the workspace"; return 3 ;;
+			*) err "$p is a worktree of a repository outside the workspace, which sync cannot copy: tell the user"; return 3 ;;
 		esac
-		checkout_form "$owner" || { err "$p is a worktree of $owner, which sync cannot name"; return 3; }
+		checkout_form "$owner" || { err "$p is a worktree of $owner, which sync cannot name: tell the user"; return 3; }
 	fi
 	repo="${owner:-$p}"
 	if [ -n "$SYNC_COMMIT" ]; then branch="HEAD"; else branch="$(lgit "$p" rev-parse --abbrev-ref HEAD 2>/dev/null)"; fi
@@ -638,8 +638,8 @@ sync_one() {
 sync_rc() {
 	case "$1" in
 		3) return 3 ;;
-		124 | 129 | 130 | 143 | 255) err "The sync stopped while $2"; return "$1" ;;
-		*) err "The sync failed while $2, with exit code $1"; return 4 ;;
+		124 | 129 | 130 | 143 | 255) err "The sync stopped while $2: run connect, then sync again, with a larger --limit if the time limit cut it"; return "$1" ;;
+		*) err "The sync failed while $2, with exit code $1: read the lines above, and sync again once the cause is fixed"; return 4 ;;
 	esac
 }
 
@@ -658,10 +658,10 @@ result_path() {
 inside_check() {
 	cat <<'EOF'
 top=${p%%/*}
-[ -e "$p" ] || { echo "vrl_ssh: no such file or folder in the remote workspace: $p" >&2; exit 3; }
+[ -e "$p" ] || { echo "vrl_ssh: no such file or folder in the remote workspace: $p; list its folder with read" >&2; exit 3; }
 root=$(cd "$top" && pwd -P) || exit 3
 if [ -d "$p" ]; then dir=$(cd "$p" && pwd -P); else dir=$(cd "$(dirname "$p")" && pwd -P); fi || exit 3
-case "$dir/" in "$root"/*) ;; *) echo "vrl_ssh: $p leads outside $top/ through a symlink" >&2; exit 3 ;; esac
+case "$dir/" in "$root"/*) ;; *) echo "vrl_ssh: $p leads outside $top/ through a symlink, which read and fetch refuse: tell the user" >&2; exit 3 ;; esac
 EOF
 }
 
@@ -669,9 +669,9 @@ EOF
 read_lines() {
 	cat <<'EOF'
 if [ -d "$p" ]; then ls -lA -- "$p" | head -n 500; exit 0; fi
-case "${p##*/}" in .env*) echo "vrl_ssh: read never prints a .env file" >&2; exit 3 ;; esac
-{ [ -f "$p" ] && [ ! -L "$p" ]; } || { echo "vrl_ssh: not a regular file: $p" >&2; exit 3; }
-[ "$(head -c 8192 "$p" | wc -c)" = "$(head -c 8192 "$p" | LC_ALL=C tr -d '\000' | wc -c)" ] || { echo "vrl_ssh: $p is not a text file" >&2; exit 3; }
+case "${p##*/}" in .env*) echo "vrl_ssh: read never prints a .env file; never print it another way" >&2; exit 3 ;; esac
+{ [ -f "$p" ] && [ ! -L "$p" ]; } || { echo "vrl_ssh: not a regular file: $p; tell the user if you need it" >&2; exit 3; }
+[ "$(head -c 8192 "$p" | wc -c)" = "$(head -c 8192 "$p" | LC_ALL=C tr -d '\000' | wc -c)" ] || { echo "vrl_ssh: $p is not a text file: fetch it if it is a figure, else tell the user" >&2; exit 3; }
 b=$(tail -n "$n" -- "$p" | wc -c)
 [ "$b" -le 65536 ] || echo "vrl_ssh: the last $n lines hold $((b)) bytes; only their last 65536 follow"
 tail -n "$n" -- "$p" | tail -c 65536
@@ -692,7 +692,7 @@ $(read_lines)"
 # The rest of fetch's remote lines, after inside_check: the marker, then the file's bytes.
 fetch_lines() {
 	cat <<'EOF'
-{ [ -f "$p" ] && [ ! -L "$p" ]; } || { echo "vrl_ssh: not a regular file: $p" >&2; exit 3; }
+{ [ -f "$p" ] && [ ! -L "$p" ]; } || { echo "vrl_ssh: not a regular file: $p; tell the user if you need it" >&2; exit 3; }
 printf '%s\n' "$m"
 exec head -c $((c + 1)) -- "$p"
 EOF
@@ -723,9 +723,9 @@ fetch_files() {
 			{ err "fetch takes figures (.png, .jpg, .jpeg, .svg, .pdf) under runs/ or tmp/, or a lock file under tmp/, such as uv.lock or requirements.txt: $p"; return 2; }
 	done
 	for d in tmp tmp/fetched; do
-		if [ -L "$d" ] || { [ -e "$d" ] && [ ! -d "$d" ]; }; then err "$d here is a symlink or not a folder"; return 3; fi
+		if [ -L "$d" ] || { [ -e "$d" ] && [ ! -d "$d" ]; }; then err "$d here is a symlink or not a folder: tell the user"; return 3; fi
 	done
-	mkdir -p tmp/fetched && chmod 700 tmp/fetched || { err "Could not create tmp/fetched here"; return 4; }
+	mkdir -p tmp/fetched && chmod 700 tmp/fetched || { err "Could not create tmp/fetched here: fix the cause, such as a full disk, then fetch again"; return 4; }
 	need_master || return
 	NO_ENV=1
 	cap=$((MAX_MB * 1048576))
@@ -744,13 +744,13 @@ $(fetch_lines)" >"$raw"
 		case "$rc" in
 			0) ;;
 			3) return 3 ;;
-			124 | 129 | 130 | 143 | 255) err "The fetch of $p stopped"; return "$rc" ;;
-			*) err "The fetch of $p failed, with exit code $rc"; return 4 ;;
+			124 | 129 | 130 | 143 | 255) err "The fetch of $p stopped: run connect, then fetch again, with a larger --limit if the time limit cut it"; return "$rc" ;;
+			*) err "The fetch of $p failed, with exit code $rc: read the lines above, and fetch again once the cause is fixed"; return 4 ;;
 		esac
 		VRL_MARKER="$marker" perl -e 'binmode STDIN; binmode STDOUT; local $/; my $d = <STDIN>; my $m = "$ENV{VRL_MARKER}\n"; my $i = index($d, $m); exit 3 if $i < 0; print substr($d, $i + length($m));' <"$raw" >"$out" ||
-			{ err "The fetch of $p returned no file"; return 4; }
+			{ err "The fetch of $p returned no file: fetch it again once; if that fails, stop and report"; return 4; }
 		size="$(wc -c <"$out" | tr -d ' ')"
-		[ "$size" -le "$cap" ] || { err "$p is larger than --max-mb $MAX_MB"; return 3; }
+		[ "$size" -le "$cap" ] || { err "$p is larger than --max-mb $MAX_MB: pass a larger --max-mb, up to 200, or save a smaller figure"; return 3; }
 		head="$(head -c 8 "$out" | od -An -tx1 | tr -d ' \n')"
 		case "$kind" in
 			png) [ "$head" = 89504e470d0a1a0a ] ;;
@@ -758,17 +758,17 @@ $(fetch_lines)" >"$raw"
 			pdf) case "$head" in 255044462d*) true ;; *) false ;; esac ;;
 			svg | lock) [ "$(head -c 65536 "$out" | wc -c)" = "$(head -c 65536 "$out" | LC_ALL=C tr -d '\000' | wc -c)" ] &&
 				{ [ "$kind" = lock ] || head -c 65536 "$out" | LC_ALL=C grep '<svg' >/dev/null; } ;;
-		esac || { err "$p is not the $kind file its name says"; return 3; }
+		esac || { err "$p is not the $kind file its name says: do not use it; tell the user"; return 3; }
 		d="tmp/fetched/$p"
 		# The folders below tmp/fetched, made one at a time, so that a symlink among them is refused.
 		q=tmp/fetched rest="${p%/*}/"
 		while [ -n "$rest" ]; do
 			q="$q/${rest%%/*}" rest="${rest#*/}"
-			if [ -L "$q" ] || { [ -e "$q" ] && [ ! -d "$q" ]; }; then err "$q here is a symlink or not a folder"; return 3; fi
+			if [ -L "$q" ] || { [ -e "$q" ] && [ ! -d "$q" ]; }; then err "$q here is a symlink or not a folder: tell the user"; return 3; fi
 			[ -d "$q" ] || mkdir "$q" || return 4
 		done
-		if [ -L "$d" ] || { [ -e "$d" ] && [ ! -f "$d" ]; }; then err "$d here is a symlink or not a file"; return 3; fi
-		chmod 600 "$out" && mv -f "$out" "$d" || { err "Could not write $d"; return 4; }
+		if [ -L "$d" ] || { [ -e "$d" ] && [ ! -f "$d" ]; }; then err "$d here is a symlink or not a file: tell the user"; return 3; fi
+		chmod 600 "$out" && mv -f "$out" "$d" || { err "Could not write $d: fix the cause, such as a full disk, then fetch again"; return 4; }
 		printf 'fetched %s to %s (%s bytes)\n' "$p" "$d" "$size"
 	done
 	# Fetched copies are scratch: delete them once uploaded; any left after 7 days go here.
@@ -779,6 +779,6 @@ $(fetch_lines)" >"$raw"
 NO_MARKER=0
 main "$@"
 rc=$?
-[ "$rc" != 124 ] || err "the time limit of $LIMIT s cut the call"
+[ "$rc" != 124 ] || err "the time limit of $LIMIT s cut the call: a command it started may still run, so read its log before trying again"
 [ "$NO_MARKER" = 1 ] || printf '\n__EXIT %s\n' "$rc" >&3
 exit "$rc"
