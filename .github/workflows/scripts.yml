@@ -24,12 +24,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install tmux and shellcheck
+      - name: Install tmux, shellcheck, and zsh
         run: |
           if [ "$RUNNER_OS" = macOS ]; then
             brew install tmux shellcheck
           else
-            sudo apt-get update -qq && sudo apt-get install -y -qq tmux shellcheck
+            sudo apt-get update -qq && sudo apt-get install -y -qq tmux shellcheck zsh
           fi
       - name: Shellcheck
         run: shellcheck -S warning -s bash skills/vrl-init-workspace/scripts/*.sh tests/scripts/*.sh tests/scripts/fakes/*

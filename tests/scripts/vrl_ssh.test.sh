@@ -36,7 +36,7 @@ test_no_master_means_no_login() {
 
 test_connect_auth_down_hostkey() {
 	down
-	FAKE_SSH_MASTER=auth run bash "$V" connect myhpc; expect_rc 3 && expect_out "own terminal" && expect_out "ControlPath=/tmp/vrl-ssh-"
+	FAKE_SSH_MASTER=auth run bash "$V" connect myhpc; expect_rc 3 && expect_out "own terminal" && expect_out "ControlPath=" && expect_out "/vrl-ssh"
 	FAKE_SSH_MASTER=down run bash "$V" connect myhpc; expect_rc 255 && expect_out "unreachable" && expect_no_out "own terminal"
 	FAKE_SSH_MASTER=hostkey run bash "$V" connect myhpc; expect_rc 5
 	run bash "$V" connect myhpc; expect_rc 0 && expect_out "answers through the new master"
@@ -46,7 +46,8 @@ test_connect_auth_down_hostkey() {
 test_socket_folder_is_private() {
 	up
 	found=0
-	for d in "$HOME/.cache/vrl-ssh" "/tmp/vrl-ssh-$(id -u)"; do
+	for d in "${XDG_RUNTIME_DIR:+$XDG_RUNTIME_DIR/vrl-ssh}" "$HOME/.cache/vrl-ssh" "/tmp/vrl-ssh-$(id -u)"; do
+		[ -n "$d" ] || continue
 		[ -e "$d" ] || continue
 		found=1
 		expect [ ! -L "$d" ] && expect [ "$(ls -ld "$d" | cut -c1-10)" = "drwx------" ]
@@ -77,8 +78,11 @@ printf "[%s]\n" "a  b" '"'"'$HOME'"'"'
 cat; echo "cat got EOF"'
 	expect_rc 0 && expect_out "/remote ws/it's" && expect_out "it's hello, TZ=Asia/Dubai" && expect_out '[a  b]' &&
 		expect_out '[$HOME]' && expect_out "cat got EOF"
-	FAKE_SSH_SHELL=zsh run bash "$V" run myhpc --workspace "$WS" -- 'echo $GREETING; exit 7'
-	expect_rc 7 && expect_out "__EXIT 7"
+	# A remote login shell of the sh family other than bash; CI installs zsh.
+	if command -v zsh >/dev/null 2>&1; then
+		FAKE_SSH_SHELL=zsh run bash "$V" run myhpc --workspace "$WS" -- 'echo $GREETING; exit 7'
+		expect_rc 7 && expect_out "__EXIT 7"
+	fi
 	run bash "$V" run myhpc --workspace "$WS" -- printf x y; expect_rc 2
 }
 

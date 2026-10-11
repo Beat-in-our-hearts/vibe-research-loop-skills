@@ -144,9 +144,10 @@ def writers(path):
                 try:
                     if os.readlink(os.path.join(fd_dir, fd)) != real:
                         continue
+                    # fdinfo starts with pos:, then flags:, the open mode in octal.
                     with open("/proc/%s/fdinfo/%s" % (pid, fd)) as f:
-                        flags = int(f.readline().split()[1], 8)
-                except (OSError, ValueError, IndexError):
+                        flags = next(int(line.split()[1], 8) for line in f if line.startswith("flags:"))
+                except (OSError, ValueError, IndexError, StopIteration):
                     continue
                 if flags & 3:  # O_WRONLY or O_RDWR
                     return True
