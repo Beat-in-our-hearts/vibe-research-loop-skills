@@ -8,7 +8,7 @@ Every entry has an ID: a short abbreviation that a human can read at a glance. I
 
 | Rule | Detail |
 |---|---|
-| Format | Lowercase English words joined by hyphens, at most 24 characters |
+| Format | Lowercase English words and numbers joined by hyphens, at most 24 characters |
 | Unique | Unique within its database; if taken, add `-2`, `-3` |
 | Set once | Never renamed after creation: folder names and notes refer to it |
 | Examples | Idea `lr-warmup` · Experiment `lr-warmup-ablation` · Finding `warmup-gain` · Paper `mixup-2018` |

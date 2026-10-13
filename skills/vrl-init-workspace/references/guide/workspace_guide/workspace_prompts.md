@@ -32,7 +32,7 @@ The workspace is the directory you were launched from; `<guide>` is the root of 
 
 3. **Rule files.** Write the workspace's `AGENTS.md`, `.env`, and `docs/AGENTS/` from the template in `<guide>/workspace_guide/`, and revise them yourself to fit step 1:
    - write them in the working language, translating the template where needed, and keep every file name and path unchanged, except that `main_repo` becomes the code folder's name everywhere;
-   - make `docs/AGENTS/language_rules.md` state the two languages, or the user's own rules, `docs/AGENTS/git.md` the git level with only its rule (manual commit: commit and push only when the user asks; auto commit: commit on your own when a change works and before each run you launch, and push only when the user asks; auto push: as auto commit, then push each commit to the same remote branch), and `docs/AGENTS/environment.md` the time zone;
+   - make `docs/AGENTS/language_rules.md` state the two languages, or the user's own rules, `docs/AGENTS/git.md` the git level with only its rule (manual commit: commit and push only when the user asks; auto commit: commit on your own when a change works and before each run you launch, and push only when the user asks; auto push: commit on your own when a change works and before each run you launch, and push each commit to the same remote branch), and `docs/AGENTS/environment.md` the time zone;
    - in `.env`, replace `/path/to/workspace` with the workspace's absolute path and `Area/City` with the time zone;
    - keep the meaning of every other rule, one topic per file, and no file in `docs/AGENTS/` mentioning another;
    - keep `AGENTS.md` listing every file in `docs/AGENTS/`, each as an `@` import with the task that needs it.

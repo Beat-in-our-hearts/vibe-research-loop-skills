@@ -7,7 +7,7 @@ description: Plan the next experiment of an approved idea in a vibe-research-loo
 
 1. **Idea.** Take the idea the user names, or else the highest-Priority approved idea in Backlog. If its Human Approved is unchecked, tell the user and stop. Read it and its earlier experiments, and decide:
    - Stage: the one the latest experiment's Conclusion proposes, or else the earliest not yet run whose previous stage's Go on when holds.
-   - Budget left, as `pages.md` says.
+   - Budget left, as `pages.md` says; if it is unknown, tell the user and stop.
    - Plan the whole stage if it fits the budget left, else the part that fits; if no useful part fits, tell the user and stop.
 2. **Facts.** Read-only: check the code, environments, checkpoints, and data the plan needs on the current machine (`docs/AGENTS/machine.md`); what is missing is setup work. Read the code the plan builds on, and trace one training batch from the data loader to the total loss.
 3. **Page.** Create the page in Experiments with Name, ID, and Idea. If the idea's Status is Backlog, set it to Testing.

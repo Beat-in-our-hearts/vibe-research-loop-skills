@@ -14,7 +14,7 @@ How to read and write the pages of the research memory. Where `docs/AGENTS/feish
 
 - Create each page from its database's template file in `guide/notion_guide/templates/` beside this file, not a Notion template, with the default properties in its header. Below the template's line is the page body: write each part only when you fill it, at its place, by its italic instructions. Italic text and the opening quote never go into the page; plain text goes in as it is. Leave no instruction text or `…`.
 - An `<aside>` is a callout with the icon and background in its template's header. Write it first, with the first sections you fill; when a page goes to review, rewrite it in place as its template says.
-- Give a new idea, experiment, or finding a Name of at most 15 words, or 20 characters in Chinese. Give every new page an ID of lowercase English words joined by hyphens, at most 24 characters, unique, and never renamed.
+- Give a new idea, experiment, or finding a Name of at most 15 words, or 20 characters in Chinese. Give every new page an ID of lowercase English words and numbers joined by hyphens, at most 24 characters, unique, and never renamed.
 - If headings differ from the template's, find sections by name and tell the user before writing.
 
 ## Writing
@@ -26,7 +26,7 @@ How to read and write the pages of the research memory. Where `docs/AGENTS/feish
 
 ## Budget left
 
-An idea's budget left is each of its Budget limits minus what its experiments used: their number, the days to the Deadline, and single-GPU hours, from each finished experiment's GPU hours row plus `gpu_hours.py` on a running one's log folder, on each of its machines. If `gpu_hours.py` exits 3, the hours are unknown: tell the user and stop.
+An idea's budget left is each of its Budget limits minus what its experiments used: their number, the days to the Deadline, and single-GPU hours, from each finished experiment's GPU hours row plus `gpu_hours.py` on a running one's log folder, on each of its machines. If `gpu_hours.py` exits 3, the budget left is unknown.
 
 ## Review marks
 

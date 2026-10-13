@@ -15,5 +15,5 @@
 - Never upload intermediate checkpoints; leave them out of a run folder's sync with `--exclude`.
 - Pack a folder of many small files into one archive before uploading it.
 - Download by path, only what the task needs. Check a dataset archive against its `.sha256`, extract it to local disk, and point `data/` at the copy; never train from the bucket directly.
-- Log in to `hf` only with `setup_clis.sh login --only hf` from the VRL scripts, in the background; pass the user the URL and code it prints at once, as the code expires in 5 minutes. Never ask for the token, print it, or pass it to a command.
+- Log in to `hf` only with `setup_clis.sh login --only hf` from the VRL scripts, in the background, and in remote mode through `vrl_ssh.sh script` with `--limit 0`; pass the user the URL and code it prints at once, as the code expires in 5 minutes. Never ask for the token, print it, or pass it to a command.
 - If a transfer fails, retry once, then report.
