@@ -5,65 +5,59 @@
 | Database | Experiments |
 | Default properties | Status = Planned · Human Approved = unchecked |
 
-Everything below the line is the body of every new page in the database: the agent that creates a page writes it in, with the default properties above, so the database needs no template in Notion. The opening quote is for that agent, who follows it and leaves it out of the page. Text in *italics* is gray italic text in Notion: those lines are instructions. Each starts with who acts and when — Agent (on creation), Agent (during runs), Agent (after runs), Agent (after review), or Human (review) — and says where the content comes from.
+Everything below the line is the body of a new page in the database. The agent that creates a page gives it the default properties above and writes each part of the body only when it fills it, at its place below, so the database needs no template in Notion. The callout comes first: it is written with sections 1 and 2 and rewritten in place each time the page goes to review. Text in *italics* is instructions for that agent: they stay in this file and never go into the page, and neither does the opening quote. The `<aside>` block is a callout with the 📋 icon and a gray background.
 
 ---
 
-> One page = one controlled experiment: the baseline, the treatment, and any ablations, compared side by side. Sections 1–3 are the plan: runs start only after a human ticks Human Approved. Write the plan in plain words that a reviewer can follow without the conversation behind it: every run, every number with its source, every choice with its reason. Start by setting a short, unique ID, e.g. `lr-warmup-ablation`; it also names the output folder.
+> One page = one controlled experiment: the baseline, the treatment, and any ablations, compared side by side, for one stage of the idea, or the part of it that fits the budget left. Sections 1 and 2 are the plan: runs start only after a human ticks Human Approved. Sections 3 to 5 are written during and after the runs. Set a short, unique ID first, e.g. `lr-warmup-ablation`; it also names the output folder. The idea holds the hypothesis, the groups, and the success criteria: refer to them, quote only the criteria under Decided by, and never loosen them.
 
-## 1. Objective
+<aside>
+📋 **Review**
 
-*Agent (on creation), then Human (review): state, in plain words, the one question this experiment answers and what you expect to see. Copy the success criteria verbatim from the idea's Planned test; never restate or loosen them. If a deviation changes how a criterion is measured, explain it under Deviations in section 2 and leave the copied text unchanged.*
+*Rewrite this callout each time the page goes to the user, in at most five lines. Decide: the action, then where to look. For the plan: "Approve stage N: tick Human Approved", then what to check: the deviations by number, the data flow, and every write outside the worktree, the run folders, and the logs, which the approval also allows; and that ticking approves the launch commands in the plan file, SHA-256 `<its first 12 digits>`, so that any later change to it, the code, or a config needs a new approval. For the results: review the code under Code changes in section 2 and say so, since the code-review check in section 4 passes only then; then the next step in section 5. Key numbers: for the plan, the runs and seeds, the total wall-clock time against the budget left, and whether it was measured or estimated; for the results, whether the criteria under Decided by were met, with the deciding number. Changed: what is new since the user's last review, or "first review".*
+
+- **Decide:** *…*
+- **Key numbers:** *…*
+- **Changed:** *…*
+</aside>
+
+## 1. Plan
+
+*Stage: the idea's stage this experiment runs. Decided by: the criteria that decide this experiment, quoted word for word: the idea's success criteria for the full test, or the stage's Go on when for an earlier stage.*
 
 | Item | Content |
 |---|---|
-| Idea | *…* |
-| Question | *…* |
-| Success criteria | *…* |
+| Stage | *…* |
+| Decided by | *…* |
 
-## 2. Design and plan
+**Runs.** *One row per run, controls such as a check that only evaluates an existing checkpoint included. Run: its folder under `runs/<date>-<name>/`. Group: the idea's group it runs, or "new" for a run the idea lacks, which is then a deviation. Setting: for the baseline, what it is; for every other run, its value of the one thing that changes. Training: what it trains and for how many steps, or none, with the checkpoint it loads. Machine: the name in the machine's profile; runs compared with each other use the same GPU type.*
 
-*Agent (on creation): give the plan file's location and name, e.g. `docs/plans/<date>-<name>.md`, and keep the design and plan on this page consistent with it. Exactly one independent variable; every other factor that could affect the result is a controlled variable and stays identical across runs. Under Deviations, number each difference from the idea's Planned test and from the stage this experiment runs, any part of the stage left out to fit the budget, and any time estimate above the stage's, with its reason: approving the plan accepts them, and any change after approval needs a new approval.*
-
-| Item | Content |
-|---|---|
-| Plan file | *…* |
-| Independent variable | *…* |
-| Controlled variables | *…* |
-| Deviations | *…* |
-
-**Runs.** *Agent (on creation): one row per run, every run the comparison needs, controls included, such as a check that only evaluates an existing checkpoint; add ablation runs as needed. The run name is its folder under `runs/<date>-<name>/`. Setting: for the baseline, what it is; for every other run, only what differs from the baseline. Training: what it trains and for how many steps, or none, with the checkpoint it loads. Evaluation: the benchmark, the number of episodes or samples, and the metrics. Shows: what this run tells us. Machine is the name in the machine's profile; runs compared with each other use the same GPU type. Below the table, say in one sentence why each control is there; then explain, in plain words, each design choice the comparison depends on: what was chosen, why, and the alternative considered.*
-
-| Run | Setting | Training | Evaluation | Shows | Machine |
+| Run | Group | Setting | Training | Seeds | Machine |
 |---|---|---|---|---|---|
 | baseline | *…* | *…* | *…* | *…* | *…* |
 | treatment | *…* | *…* | *…* | *…* | *…* |
 
-**Data per sample.** *Agent (on creation): only when a training sample holds more than one input and its target, as in sequence models or a model with several branches; otherwise delete this part. One row per component that reads the data, such as the policy and a world-model branch: the inputs and targets it takes, by position relative to the current step t, e.g. frames t−1 and t, or actions a_t … a_t+14 in groups of five. Read them from the data-loading code, not from config names.*
+**Deviations.** *Numbered, one line each, with its reason: every difference from the idea's Planned test or from the stage, every part of the stage left out to fit the budget, and any time above the stage's. Write "None." when there is none. Approving the plan accepts them; a change after approval needs a new approval.*
 
-| Component | Inputs | Targets |
-|---|---|---|
-| *…* | *…* | *…* |
+1. *…*
 
-**Data flow and losses.** *Agent (on creation): trace one training batch through the code, from the data loader to the total loss, for every model that differs, such as the baseline and a model with an extra branch; read it from the code, never from config names. First a code block with the tensor shape after every step that changes it, with the meaning of each axis (batch, time, camera, channel, height, width), where each component reads its input, and where gradients stop. Then one line per loss term: its formula, its weight, what it is averaged over and masked by, and how the terms add up to the total loss, including any per-sample weights, regularizers, and gradient clipping that differs between runs.*
+**Steps.** *The steps in the order they run. The first steps prepare the code, the environments, and the data, and end with the smoke run; they run while planning. The steps after them wait for Human Approved, which also approves their writes. Go on when: the condition the next step needs; if it fails, stop and report. Time: from the basis below. Writes: what the step creates or changes besides its run folder and log, and where, such as a worktree, an environment, or data; leave the cell empty when there is nothing else.*
 
-*…*
+| Step | What it does | Go on when | Time | Writes |
+|---|---|---|---|---|
+| *…* | *…* | *…* | *…* | *…* |
 
-**Time estimate.** *Agent (on creation): start with the current machine from `docs/AGENTS/machine.md`: its GPUs, CPU cores, and memory. Then one row per piece of work in the Detail plan: setup, such as writing the code, building or rebuilding an environment, and converting data; the smoke run; each run's training and evaluation, re-evaluating a reused baseline in a new environment included; and any diagnostics. In Basis, give the measured number, its source, and the hardware it was measured on, then how it scales to this machine, adding what the treatment costs beyond the baseline, such as extra data loading or compute per sample; mark each number measured or estimated, and name what limits the speed, such as the GPU, CPU data loading or video decoding, or the simulator. End with the total task hours, and the wall-clock hours with the planned concurrency, e.g. three runs sharing one GPU. After the smoke run, re-estimate from its measured step times and say what changed; a human confirms the new estimate when approving the plan. Set Est. Hours to the wall-clock hours from the first run to the end of the plan.*
+*Basis: one line per measured number the times rest on, with its source and the hardware it was measured on, then how it scales to the current machine in `docs/AGENTS/machine.md`, what the treatment adds over the baseline, and what limits the speed, such as the GPU, data loading, or preprocessing; mark a number that nobody measured as estimated. Total: the task hours, and the wall-clock hours with the planned concurrency, e.g. three runs sharing one GPU; set Est. Hours to the latter. After the smoke run, replace the times with the measured ones and say in one line what changed.*
 
-| Item | Basis | Estimate |
-|---|---|---|
-| *…* | *…* | *…* |
+**Basis:** *…*
 
-**Detail plan.** *Agent (on creation): the steps in the order they run, one row per step. What it does: in plain words. Output: what it produces. Go on when: the condition the next step needs; if it fails, stop and report to a human. Time: from the time estimate above. Writes: every file or folder the step creates or changes, and where, such as the worktree, an environment, data, and run and log folders. The first steps prepare the code, the environments, and the data, and end with the smoke run; they are done while planning. The steps after them wait for Human Approved, which also approves the writes they list.*
+**Total:** *…*
 
-| Step | What it does | Output | Go on when | Time | Writes |
-|---|---|---|---|---|---|
-| *…* | *…* | *…* | *…* | *…* | *…* |
+## 2. Code and configuration
 
-## 3. Configuration
+*The plan review reads it to check what the code computes, and the code review reads it with the code. Fill it from the code, the config snapshots, and the launch record, never from config names or memory. Before the smoke run, write the planned values and mark them as planned; replace them from the snapshots once it passes.*
 
-*Agent (on creation): fill from the config snapshots and the launch record, never from memory; write the essentials only, since the snapshot files hold the full config. Before the smoke run, write the planned values and say that they are planned; replace them from the snapshots once it passes. Model: architecture and initial weights (name plus version or hash). Data: dataset version and splits. Code: repository, branch, base commit, worktree path, entry point, launch command, and commit. Evaluation: metrics, evaluation code version (locked for the whole comparison), and statistics (number of seeds, mean ± std). Files: where inputs, outputs, and logs live; outputs go to `runs/<date>-<name>/<run>/` and logs to `logs/<date>-<name>/<run>.log`, where `<date>` is the Created date and `<name>` is this experiment's ID. For embodied experiments, add an Environment row: simulator or robot, evaluation episodes, and the success definition.*
+*Model: architecture and initial weights, name plus version or hash. Data: dataset version and splits. Code: repository, branch, base commit, worktree, and entry point; the plan file `docs/plans/<date>-<name>.md`, which holds each run's config file and launch command, and, once the plan goes to approval, the plan file's SHA-256; and the launch commit once a run starts. Evaluation: metrics, the evaluation code version, locked for the whole comparison, and the statistics: how the spread over seeds is reported and the test of significance, such as mean ± std over 3 seeds and Welch's t-test. When evaluation runs in an environment rather than on a fixed test set, add an Environment row: the environment and its version, the number of evaluation episodes, and the success definition.*
 
 | Item | Content |
 |---|---|
@@ -71,46 +65,55 @@ Everything below the line is the body of every new page in the database: the age
 | Data | *…* |
 | Code | *…* |
 | Evaluation | *…* |
-| Files | *…* |
 
-**Code changes.** *Agent (on creation): one row per file the experiment adds or changes, with its role in plain words and the code it was adapted from (repository, commit, and file), or — if it was written from scratch.*
+**Data per sample.** *Only when a training sample holds more than one input and its target, as in sequence models or a model with several branches; otherwise leave this part out. One row per component that reads the data, such as an encoder and an auxiliary prediction head: the inputs and targets it takes, by position relative to the current step t, e.g. tokens t−3 … t, and the next token t+1 as the target. Read them from the data-loading code, not from config names.*
 
-| File | Role | Reference source |
+| Component | Inputs | Targets |
 |---|---|---|
 | *…* | *…* | *…* |
 
-**Hyperparameters.** *Agent (on creation): one row per key hyperparameter, from the config snapshots, adding rows as needed; keep each name as the config writes it. In Meaning, say in plain words what the value does, as the code that reads it uses it rather than as its name suggests. Mark Changed with ✔ only where the value differs from the baseline.*
+**Data flow and losses.** *One training batch traced through the code, from the data loader to the total loss, for every model that differs, such as the baseline and a model with an extra branch. First a code block with the tensor shape after every step that changes it, the meaning of each axis, such as batch, time, channel, height, and width, where each component reads its input, and where gradients stop. Then one line per loss term: its formula, its weight, what it is averaged over and masked by, and how the terms add up to the total loss, including any per-sample weights, regularizers, and gradient clipping that differ between runs.*
 
-| Parameter | Meaning | Value | Baseline | Changed |
-|---|---|---|---|---|
-| *…* | *…* | *…* | *…* |  |
+*…*
 
-## 4. Logs
+**Code changes.** *One row per file the experiment adds or changes: its role, and the code it was adapted from (repository, commit, and file), or — if it was written from scratch.*
 
-*Agent (during runs): update at every checkpoint or evaluation. Overwrite the status row; regenerate the training-loss and primary-validation-metric curves from metrics.csv, one line per run, and replace the old figures below; add an anomaly row for every incident (divergence, NaN, plateau, restart). If the ETA drifts more than 20% from Est. Hours, update Est. Hours. Write every time in the project's time zone.*
+| File | Role | Adapted from |
+|---|---|---|
+| *…* | *…* | *…* |
 
-| Progress | Latest metrics | Updated |
+**Hyperparameters.** *The values held equal across runs that a reviewer needs to judge the comparison, such as the learning rate, the batch size, and the training steps, and any parameter only the treatment has; the Runs table already gives what changes. Keep each name as the config writes it. Meaning: what the value does, as the code that reads it uses it rather than as its name suggests. Below the table, one line from the config snapshots: every other key is identical across runs, or the keys that differ.*
+
+| Parameter | Meaning | Value |
+|---|---|---|
+| *…* | *…* | *…* |
+
+## 3. Logs
+
+*Overwrite the status row at every checkpoint, evaluation, and report. Under Curves, regenerate the training-loss and primary-metric curves from metrics.csv, one line per run, replacing the old figures. If the ETA drifts more than 20% from Est. Hours, update Est. Hours. Write every time in the project's time zone.*
+
+| Runs | Latest metrics | Updated |
 |---|---|---|
 | *…* | *…* | *…* |
 
 **Curves**
 
-| Step | Anomaly | Action |
+**Incidents.** *Leave this part out until the first incident: a divergence, NaN, plateau, or restart, one row each, with the step, what happened, and what was done.*
+
+| Step | Incident | Action |
 |---|---|---|
-| *—* | *none* | *—* |
+| *…* | *…* | *…* |
 
-## 5. Results and analysis
+## 4. Results
 
-*Agent (after runs), then Human (review): compute from the final metrics files; report mean ± std over seeds and the difference from the baseline, rounded consistently; investigate suspiciously good results before reporting them. Show the results in figures and tables, never in text alone: Table 1 plus at least one figure, such as the primary metric per run with error bars, and more for secondary metrics or ablations. Save each figure as PDF and PNG, with the script that draws it, under `runs/<date>-<name>/figures/`. In the analysis, one row per observation, including surprises and failures; the evidence is a figure, a table, a run, or a paper from the post-experiment search.*
-
-*Agent (after runs): publication style. Figures: drawn by a script from the result files, never by hand; axes with quantity and unit; mean ± std as error bars or shaded bands; one colorblind-safe color per run across all figures; no 3D, pie charts, or titles inside the plot. Tables: units and ↑ or ↓ in the header; the best result in bold, the second best underlined; the same decimals within a column. Captions: numbered, stating what is shown, the number of seeds, and the takeaway; below a figure, above a table.*
+*Compute from the final metrics files: mean ± std over seeds, the difference from the baseline, and its significance with the test named under Evaluation in section 2, from the per-seed values; round consistently, and investigate a result that looks too good before reporting it. Table 1 and at least one figure, such as the primary metric per run with error bars; save each figure as PDF and PNG, with the script that draws it, under `runs/<date>-<name>/figures/`. Figures: drawn by a script from the result files; axes with quantity and unit; mean ± std as error bars or shaded bands; one colorblind-safe color per run across all figures; no 3D, pie charts, or titles inside the plot. Tables: units and ↑ or ↓ in the header; the best result in bold, the second best underlined; the same decimals within a column. Captions: numbered, stating what is shown, the number of seeds, and the takeaway; below a figure, above a table. Observations: one row per thing worth knowing that Table 1 does not already say, surprises and failures included, each with its evidence: a figure, a run, or a paper from the post-experiment search.*
 
 **Table 1.** *…*
 
-| Run | Primary metric | vs baseline |
-|---|---|---|
-| baseline | *…* | *—* |
-| treatment | *…* | *…* |
+| Run | Primary metric | vs baseline | p |
+|---|---|---|---|
+| baseline | *…* | — | — |
+| treatment | *…* | *…* | *…* |
 
 **Figure 1.** *…*
 
@@ -118,20 +121,20 @@ Everything below the line is the body of every new page in the database: the age
 |---|---|---|
 | *…* | *…* | *…* |
 
-*Agent (after runs): mark each check ✔ or ✘, with the reason for every ✘. Human (review): the code-review check passes only after a human has reviewed the AI-generated code.*
+*Mark each check ✔ or ✘, with the reason for every ✘. The code-review check passes only after the user says they have reviewed the AI-generated code.*
 
 | Check | Pass |
 |---|---|
 | Evaluation code and data version match the baseline | *✔ / ✘* |
-| All runs finished as the approved plan says | *✔ / ✘* |
 | AI-generated code reviewed by a human | *✔ / ✘* |
 
-## 6. Conclusion
+## 5. Conclusion
 
-*Agent (after runs), then Human (review): answer whether the success criteria were met with yes or no and the deciding numbers; if they were, draft a finding page that @mentions this experiment in its Related property. Check the idea's Budget limits, and stop once a limit or a stop condition is reached. For reproduction, write one command that reruns the whole comparison from a clean checkout.*
+*Criteria met: yes or no against Decided by in section 1, citing the Table 1 row; for an earlier stage, Decided by is its Go on when, so yes lets the next stage run and does not yet mean the idea holds. Next step: check the idea's Budget limits, then the next stage, or the part of it that fits the budget left, or stop iterating and draft the finding. Reproduce: one command that reruns the whole comparison from a clean checkout. GPU hours: one line per machine, its single-GPU hours from `gpu_hours.py` once its runs have ended, with any hours it could not count.*
 
 | Item | Content |
 |---|---|
 | Criteria met | *…* |
 | Next step | *…* |
 | Reproduce | *…* |
+| GPU hours | *…* |

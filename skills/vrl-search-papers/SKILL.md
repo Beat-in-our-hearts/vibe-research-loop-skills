@@ -5,44 +5,26 @@ description: Search arXiv, Semantic Scholar, and Hugging Face Daily Papers for w
 
 # Search papers
 
-The Literature Library is shared by every project and strictly curated: better no paper than a poor one.
-
-| Mode | Look for | The analysis goes to |
-|---|---|---|
-| Daily | Work on the research question, scope, and current direction in the project's Research Core | The new papers' own pages |
-| Post-experiment | Work that explains, supports, or contradicts a finished experiment's result | That experiment's Results and analysis |
-| On request | What the user asks for | The new papers' own pages |
-
-1. **Search.** Query the sources below, then read each candidate's abstract, and the full text of any you might add.
-
-   | Source | Endpoint |
-   |---|---|
-   | arXiv | `https://export.arxiv.org/api/query?search_query=...` |
-   | Semantic Scholar | `https://api.semanticscholar.org/graph/v1/paper/search?query=...&fields=title,abstract,year,externalIds,url`; without an API key it often answers 429, so wait and retry once |
-   | Hugging Face Daily Papers | `https://huggingface.co/api/daily_papers?date=YYYY-MM-DD` |
-
-2. **Admit.** Add a paper only if all of these hold:
-   - it is directly relevant to an active research question;
-   - it offers a method, result, or evidence you would use or must compare against;
-   - Papers does not have it yet: check its Link and its title;
-   - no more than three papers are added in this run; zero is a valid result.
-3. **Page.** Create each page in Papers with Title, ID (usually the method name and year, e.g. `openvla-2024`; unique, never renamed), Link (arXiv, DOI, or publisher page), Keywords (reuse one before adding one), Corresponding Authors, and Affiliations. Leave Human Approved unchecked. Fill sections 1–6 from what you actually read.
-4. **Report.** List the papers added, each with one line on why it passed, and the close candidates you left out, with why. Tell the user the new papers wait in the Review Queue view for Human Approved.
+1. **Search.** Query arXiv, Semantic Scholar (with `fields=title,abstract,year,externalIds,url`), and Hugging Face Daily Papers (`huggingface.co/api/daily_papers?date=YYYY-MM-DD`) for the user's request, or else the Research Core's question, scope, and current direction; in post-experiment mode, for work that explains, supports, or contradicts the experiment's result, analyzed in its Results. Read each candidate's abstract, and the full text before adding it.
+2. **Admit.** Add at most three papers, each directly relevant to an active research question, offering a method, result, or evidence you would use or must compare against, and not in Papers yet by Link or title.
+3. **Page.** Create each in Papers with all its properties, reusing a Keyword before adding one, and fill sections 1–6 by the template.
+4. **Report.** List for the user the papers added and the close candidates left out, each with why; the added ones wait in the Review Queue for Human Approved.
 
 ## Rules
 
-- At the start, run `bash <this skill's folder>/../vrl-init-workspace/scripts/check_update.sh` where the skills are installed, the local machine in remote mode. If it reports a newer release, tell the user once in the session, with the update command it prints, and go on; never update the skills unless the user asks.
-- Work from the root of a vibe-research-loop workspace, the directory with `AGENTS.md` and `docs/AGENTS/`, and follow its rules. Anywhere else, tell the user and stop.
-- If `docs/AGENTS/remote.md` exists, this machine computes on a remote host over SSH, and that file says where each path lives and where each command runs: every workspace path but `AGENTS.md` and `docs/AGENTS/` is in the remote workspace, read and written locally through the mount; everything but file edits, `ntn`, and web requests runs on the remote host through the SSH master. Never fall back to the local machine.
-- Use the `ntn` CLI for Notion, and look up its usage live: `ntn --help`, `ntn api ls`, `ntn api <path> -X <method> --spec`. Always run `ntn api ... < /dev/null`, or it waits on stdin.
-- Take the IDs of the project page and the databases from `docs/notion/ids.md`. If it is missing, find them with `ntn api v1/search` by exact title, reading every page of results; ask the user which project if several match, and record the IDs there in a table with the columns Object, Title in Notion, Page ID, Database ID, and Data source ID.
-- Create each new page from its database's template file, never from a template in Notion: `ideas.md`, `experiments.md`, `findings.md`, or `papers.md` in `<this skill's folder>/../vrl-init-workspace/references/guide/notion_guide/templates/`. Give the page the default properties in the file's header and the body below its line, written as the text above the line says. Check what you wrote by its blocks and their inline styles: the page's markdown export splits italic text around inline code into pieces that read as `**…**`.
-- Fill each section by its gray instructions; once it is filled, delete its gray instruction lines and any `…` placeholder left in it. A section that a later step fills keeps its instructions and placeholders until that step fills it. To see the instructions of a cleaned section, read them in the template file.
-- Write Notion pages in the language the workspace's language rules set for them, or else in the reply language. That covers the headings, labels, and table headers you take from a template, but not its gray instructions, which you copy unchanged. Use property names and the options of select and status properties exactly as the database defines them, and keep identifiers, code, paths, and commands as they are.
-- Write every page in sentences a colleague can follow without decoding. Common abbreviations such as w/, w/o, ckpt, bs, lr, approx., or SR are fine on their own, but never string abbreviations and symbols together with no words between them; spell an abbreviation out the first time only when it is uncommon in the field or made up for this project.
-- Keep each table cell short: a value, a phrase, or one sentence. When a cell holds several points, put each on its own line within the cell (a `\n` in its rich text, since a cell cannot hold list blocks), starting with `1.`, `2.` when their order matters and `•` otherwise. When a cell would run past three lines, move its content into a list right below the table and leave a short pointer in the cell.
-- Read a page before every write and read it back after; merge the user's edits instead of overwriting them.
-- The user reviews a page by coloring its text or the text's background: red marks what they think is wrong, orange what they did not understand, purple what they cannot accept; other colors are not marks. Before every write to a page, read the colors of all its text, table cells included (`annotations.color` of each rich-text item, and the block's `color`), and answer each mark, telling the user what you change and why: fix red text; explain orange text in plainer words and rewrite it so that it no longer needs the explanation; for purple text, propose an alternative and leave the text and its mark in place until the user decides. Write rewritten text without the mark, and leave every mark you have not resolved in place.
-- Add a figure by uploading its PNG with `ntn files create --filename <name>.png --content-type image/png < <file>`, then inserting it as an image block right above its caption.
-- Write times in the project's time zone, the `TZ` in the workspace's `.env`: `YYYY-MM-DD HH:MM` in text, and `"time_zone": "<TZ>"` on date properties.
-- Never make a Human-In-Loop decision: tick Human Approved, set Confirmed or Overturned, or change a Budget limit the user has set.
+- At the start, run `bash <kit>/scripts/check_update.sh`, where `<kit>` is `<this skill's folder>/../vrl-init-workspace`. Report a newer release once per session with its update command; update only when asked.
+- Work from a vibe-research-loop workspace root (with `AGENTS.md` and `docs/AGENTS/`) and follow its rules. Elsewhere, tell the user and stop.
+- If `docs/AGENTS/remote.md` exists, follow it. Edit here, send only commits with `vrl_ssh.sh sync`, and take pins and plan hashes from its output. Read results there; fetch only figures or lock files. Run no code here.
+- Never improvise what the scripts in `<kit>/scripts/` do: `launch_run.sh` starts every long-running command, `resources.sh` reports free GPUs, `gpu_hours.py` counts GPU hours, `vrl_ssh.sh` reaches the remote host. Read a script's `--help` only for an option no skill or rule file gives. If one refuses, tell the user why. Work around it only as a rule file says.
+- If `docs/AGENTS/feishu.md` exists, follow it instead wherever these instructions concern Notion.
+- For Notion, use the `ntn` CLI; see `ntn --help`, `ntn api ls`, `ntn api <path> -X <method> --spec`. Always run `ntn api ... < /dev/null`.
+- Take project page and database IDs from `docs/notion/ids.md`. If missing, find them by exact title with `ntn api v1/search`, reading all result pages. Ask the user if several projects match. Record them there in columns Object, Title in Notion, Page ID, Database ID, Data source ID.
+- Create each page from its database's template file in `<kit>/references/guide/notion_guide/templates/`, not a Notion template, with its header's default properties. Write each part only when you fill it, at its place, by its italic instructions. Leave no instruction text or `…`. When a page goes to review, rewrite its opening callout in place as its template says.
+- If headings differ from the template's, find sections by name and tell the user before writing.
+- Write pages, headings and labels included, in the language the workspace rules set, else the reply language. Use property and option names exactly as defined.
+- State each fact once, where it belongs, and elsewhere point to it unless a template asks otherwise. Give reasons only for deviations, controls, estimates, and ✘, or where a template asks. Spell out at first use abbreviations uncommon in the field or made up here. Never chain abbreviations and symbols without words.
+- Keep a table cell to a value, phrase, or sentence. Put several points on separate lines (`\n` in rich text), starting `1.`, `2.` if ordered, else `•`. Move content over three lines to a list below the table, leaving a pointer.
+- Read a page before and after every write; merge the user's edits. Read every color, table cells included: each rich-text item's `annotations.color` and the block's `color`. Red, orange, or purple text or background is a review mark. Answer each, telling the user what you change and why. Red (wrong): fix it. Orange (unclear): explain it plainly, and rewrite it to need no explanation. Purple (not acceptable): propose an alternative; keep the text and mark until the user decides. Rewritten text loses its mark. Unresolved marks stay.
+- Upload a figure's PNG with `ntn files create --filename <name>.png --content-type image/png < <file>` and place it as an image block right above its caption.
+- Write times in the `TZ` of `.env`: `YYYY-MM-DD HH:MM` in text, `"time_zone": "<TZ>"` on date properties.
+- Never make a Human-In-Loop decision: tick Human Approved, set Confirmed or Overturned, or change a Budget limit the user set.

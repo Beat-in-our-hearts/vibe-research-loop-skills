@@ -1,24 +1,27 @@
 # Log template
 
-A log must make sense on its own. Write the header before the command starts, redirect stdout and stderr into the log, and append the footer when the command ends:
+Launch every command that may run for minutes, smoke runs, data processing, and setup steps included, from the workspace root, through `vrl_ssh.sh script` in remote mode, with `bash <VRL scripts>/launch_run.sh --machine <name> --tmux <session>` (`--nohup` without a tmux session), `--gpus <ids>` or `--no-gpu`, and:
+
+- for a run of an approved plan, only `--plan <plan file> --run <run> --plan-sha256 <hash>`;
+- for anything else, `--purpose '<one line>' --log <log> --code <checkout or none> [--outputs <folder>] -- '<command>'`.
+
+The command starts in the workspace root, so it enters its checkout itself, as in `cd main_repo && ...`, and writes its outputs to `$VRL_OUTPUTS`. Turn off or slow down its progress bars.
+
+- Read a log's header with `head` and its end with `tail` first. A log without a footer is still running, or was killed.
+- Stop a run with `kill <PID>` from its header's session line, or by closing its tmux window.
+- Start an ended run again only with `--restart`, once the cause of its crash or failure is fixed, or with `--resume`, to continue one that ended with exit code 0.
+
+On a machine with a job scheduler, launch through the scheduler, and write the header and footer by hand:
 
 ```
 # command:   <the exact command>
-# purpose:   <date>-<name> / <run>: one line on what this command does
+# purpose:   <date>-<name> / <run>: <one line>
 # code:      <checkout> (<branch>) @ <commit> (clean or dirty)
-# outputs:   <output paths, e.g. runs/<date>-<name>/<run>/>
-# resources: <machine>, GPU <ids> (<model>), Python env <name>
-# session:   <tmux session:window, PID, or scheduler job ID>
+# resources: <machine>, GPU <ids> (<model>)      or: <machine>, no GPU
+# session:   job <job ID>
 # started:   <YYYY-MM-DD HH:MM:SS ±HH:MM>
 # ---------- stdout + stderr ----------
-<the command's output, unchanged>
+<output>
 # ---------- end ----------
-# finished:  <YYYY-MM-DD HH:MM:SS ±HH:MM> (<duration>), exit code <n>
+# finished:  <YYYY-MM-DD HH:MM:SS ±HH:MM> (<H:MM:SS>), exit code <n>
 ```
-
-- `code` names the checkout the command ran in: `main_repo`, a worktree, or a reference repository.
-- `session` is where the process lives: check or attach to it there, and never start a second copy.
-- For a command running in the background, let the same shell write the footer when the command exits; never write it right after launching.
-- When you resume or restart a run, append a new header and footer to the same log.
-- Turn off progress bars or slow their refresh, so that they do not flood the log.
-- Read a log's header with `head` and its end with `tail` before reading the rest. A log without a footer belongs to a command that is still running or was killed.

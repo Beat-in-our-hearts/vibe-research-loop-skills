@@ -11,7 +11,7 @@ Every entry has an ID: a short abbreviation that a human can read at a glance. I
 | Format | Lowercase English words joined by hyphens, at most 24 characters |
 | Unique | Unique within its database; if taken, add `-2`, `-3` |
 | Set once | Never renamed after creation: folder names and notes refer to it |
-| Examples | Idea `lr-warmup` · Experiment `lr-warmup-ablation` · Finding `warmup-gain` · Paper `openvla-2024` |
+| Examples | Idea `lr-warmup` · Experiment `lr-warmup-ablation` · Finding `warmup-gain` · Paper `mixup-2018` |
 
 ## Links between pages
 
@@ -72,15 +72,15 @@ One row per experiment: a controlled comparison of baseline, treatment, and abla
 | Idea | relation, one-way | → Ideas | The idea under test |
 | Status | status | Planned (to-do) · Running (in progress) · Finish (complete) | |
 | Outcome | select | Done · Failed · Invalid | The second level of Finish, set together with it |
-| Human Approved | checkbox | | A human approved the plan in sections 1–3 of the page; agents start runs only after that |
+| Human Approved | checkbox | | A human approved the plan in sections 1 and 2 of the page; agents start runs only after that |
 | Progress | formula | text bar, e.g. `███████░░░ 70%` | Elapsed time / Est. Hours, capped at 100%; Finish shows 100%, or `stopped` if the outcome is Failed or Invalid |
 | Started | date and time | | Start of the first run, set by the agent when it launches that run |
-| Est. Hours | number | | Estimated wall-clock hours from the first run to the end of the plan, from the step times measured in the smoke run and the planned concurrency (the Time estimate in section 2); updated when the ETA drifts |
+| Est. Hours | number | | Estimated wall-clock hours from the first run to the end of the plan, from the step times measured in the smoke run and the planned concurrency (the Total under Steps in section 1); updated when the ETA drifts |
 | Created | created time | | When the experiment was planned; also `<date>` in the output folder `runs/<date>-<name>/` |
 
 | Status | Outcome | Set when | Set by |
 |---|---|---|---|
-| Planned | | The experiment is created; sections 1–3 hold the plan | The agent |
+| Planned | | The experiment is created; sections 1 and 2 hold the plan | The agent |
 | Running | | The first run is launched, together with Started | The agent |
 | Finish | Done | Every run in the approved plan finished; a result that misses the success criteria is still Done | The agent |
 | Finish | Failed | The plan could not be completed: a crash, out of memory, or a divergence that could not be fixed | The agent |
@@ -112,7 +112,7 @@ Verified conclusions: what an idea's experiments showed, or a result that stands
 
 | Property | Type | Values | Meaning |
 |---|---|---|---|
-| Name | title | | The claim in short, no broader than the evidence, at most 15 words, or 20 characters in Chinese; the one-sentence conclusion states it in full |
+| Name | title | | The claim in short, no broader than the evidence, at most 15 words, or 20 characters in Chinese; the Conclusion callout states it in full |
 | ID | text | e.g. `warmup-gain` | Short, readable handle |
 | Status | status | Under Review (to-do) · Confirmed · Overturned (complete) | A new finding starts Under Review; only a human sets Confirmed or Overturned |
 | Related | text | @mentions of idea and experiment pages | The idea it resolves and the experiments behind it, if any |
@@ -130,7 +130,7 @@ Curated papers shared by all projects. Quality over quantity; admission rules ar
 | Property | Type | Values | Meaning |
 |---|---|---|---|
 | Title | title | | The paper's title |
-| ID | text | e.g. `openvla-2024` | Short, readable handle; usually the method name and year |
+| ID | text | e.g. `mixup-2018` | Short, readable handle; usually the method name and year |
 | Human Approved | checkbox | | A human checked the paper against the admission rules and keeps it |
 | Keywords | multi-select | | Keep the list short; reuse a keyword before adding one |
 | Corresponding Authors | multi-select | | One or more corresponding authors |

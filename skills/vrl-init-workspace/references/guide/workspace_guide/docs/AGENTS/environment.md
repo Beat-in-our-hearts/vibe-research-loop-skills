@@ -1,15 +1,14 @@
 # Environment
 
-`.env` at the workspace root sets every environment variable this machine needs, one `NAME=value` per line, as few as possible; it is never committed:
+`.env` at the workspace root sets every environment variable this machine needs, one `NAME=value` per line. Never commit it, and never put a token, key, or password in it.
 
-| Variable | Value | Why |
-|---|---|---|
-| `XDG_CACHE_HOME` | `<absolute path of the workspace>/.cache` | pip, uv, Hugging Face, torch, and most other tools keep their caches under it |
-| `TZ` | `Area/City` | Every machine writes times in this one time zone, the same as Notion |
+| Variable | Value |
+|---|---|
+| `XDG_CACHE_HOME` | `<absolute path of the workspace>/.cache` |
+| `TZ` | `Area/City`, the time zone of every time agents write |
 
-- Write every value as a literal: an absolute path or a plain value. Never build one from another variable (`export X=$X/...`, `HF_HOME=$XDG_CACHE_HOME/huggingface`) or from a relative path; both leave stray folders behind.
-- Load `.env` in every command you launch: `set -a; . <absolute path of the workspace>/.env; set +a`. Never rely on `.bashrc`: commands run through `tmux new-window '<cmd>'`, `ssh host '<cmd>'`, or a job scheduler may not read it.
-- Add a variable only for a tool that ignores `XDG_CACHE_HOME`, such as `TRITON_CACHE_DIR` for Triton or `CUDA_CACHE_PATH` for the CUDA kernel cache; point it inside `.cache/`, and add it only when the user agrees.
-- Never put tokens, keys, or passwords in `.env`.
-- Keep every cache in `.cache/`: never let a tool write to its default cache folder in the home directory, such as `~/.cache`, `~/.triton`, or `~/.nv`. If `.cache/` outgrows its disk, make it a symlink to a larger disk instead of moving caches elsewhere.
-- If a folder named like `$...`, or a stray `cache/`, appears in the workspace, a variable was set wrongly: report it, and do not delete it.
+- Write each value as a literal, never with `$VAR` or a relative path.
+- Load `.env` in every command you launch, with `set -a; . <absolute path of the workspace>/.env; set +a`; never rely on `.bashrc`.
+- Keep every cache in `.cache/`, never in `~/.cache`, `~/.triton`, or `~/.nv`.
+- Add a variable only with the user's consent, such as a cache path inside `.cache/` for a tool that ignores `XDG_CACHE_HOME`.
+- A folder named like `$...`, or a stray `cache/`, in the workspace means a variable was set wrongly: report it; never delete it.

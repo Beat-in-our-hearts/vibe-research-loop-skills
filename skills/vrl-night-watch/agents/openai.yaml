@@ -1,0 +1,6 @@
+interface:
+  display_name: "VRL Night Watch"
+  short_description: "Run approved experiments overnight, unattended"
+  default_prompt: "Use $vrl-night-watch to keep the GPUs busy with approved experiments tonight."
+policy:
+  allow_implicit_invocation: false

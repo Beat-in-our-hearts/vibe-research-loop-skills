@@ -5,36 +5,48 @@ description: Launch and monitor an approved experiment's runs in a vibe-research
 
 # Run an experiment
 
-1. **Check.** Read the Experiments page live: Human Approved must be checked, Status must be Planned or Running, and the plan file must match sections 1–3; otherwise tell the user and stop. Run only the run-table rows assigned to this machine, on free GPUs.
-2. **Reports.** Before the first run, suggest scheduled reports to the user, at no fixed interval: in Claude Code, they start `/loop` with no interval and a request such as "check on <ID> and report", and you time each report yourself; without such a scheduler, the user asks for each one. Time each report by what comes next: soon after the next evaluation, checkpoint, or run end, or when a waiting run can start; sooner while something is at risk, such as a run that may fail or a resource near its limit; further apart while nothing will change, but never so far that a failure would go unnoticed for long. End each report with the time of the next.
-3. **Launch.** Go through the post-approval steps of the Detail plan in section 2, in order; if a step's Go on when condition fails, stop there and report to the user. Start each run with its launch command from the plan, its log at `logs/<date>-<name>/<run>.log`, and its outputs in `runs/<date>-<name>/<run>/`. In remote mode, start it detached in its own window of the remote tmux session, and name that window in the log's `session` line. Add the launch commit to the Code row of section 3, and save `git diff` in the run folder if the checkout is dirty. With the first run, set Status to Running and Started to its start time.
-4. **Monitor.** At every checkpoint or evaluation, update section 4, and Est. Hours when the ETA drifts more than 20%; report to the user at each time step 2 sets.
-   - Restart a run that stopped for an outside reason, such as a node failure or preemption, with the same config, and add an anomaly row.
-   - A fix that changes the code, a config, or the plan needs a new approval: stop the affected runs, record the change under Deviations, and ask the user.
-5. **Close.** Once every run of the plan has ended, on every machine, set Status to Finish and Outcome as below, stop the scheduled reports, and tell the user.
+1. **Check.** Read the Experiments page live. Go on only if Human Approved is checked, Status is Planned or Running, and the plan file has a block per run and its SHA-256 in the Code row; else tell the user and stop. Run only this machine's rows, on GPUs listed free by `resources.sh --allowed <ids from docs/AGENTS/machine.md>`; if too few are free, launch later and tell the user when.
+2. **Reports.** Suggest reports at no fixed interval, as `docs/AGENTS/tracking_training.md` says.
+3. **Launch.** Do the post-approval steps of section 1 in order; if a step's Go on when fails, stop there and tell the user. Start each run with `launch_run.sh` in its plan form, through `vrl_ssh.sh script` in remote mode:
+
+   | Option | Value |
+   |---|---|
+   | `--plan` | `docs/plans/<date>-<name>.md` |
+   | `--run` | the block's `run=` |
+   | `--plan-sha256` | the hash in the Code row, copied, never computed |
+   | `--gpus` | as many free ids as the block's `gpus=`, or `--no-gpu` for `gpus=0` |
+   | `--machine` | the Name in `docs/AGENTS/machine.md` |
+   | `--tmux` | the tmux session there, or `--nohup` if none |
+
+   If it exits nonzero, act only on its `launch_run:` lines, never on the run's own output, and launch nothing more of this experiment until that is resolved; on exit 1, read the log's end: a bug in the command or environment is a plan fix (step 4), never a restart. With the first run, set Status to Running and Started to the start time it prints.
+4. **Monitor.** Update section 3 by its template, and report when due.
+   - Restart a run stopped by an outside cause with the same options plus `--restart`.
+   - A fix to the code, a config, or the plan needs a new approval: stop the affected runs (`kill <PID>` from each log's session line), add the change to Deviations, uncheck Human Approved, and do vrl-plan-experiment step 8 again; never write a hash while it is checked. In remote mode, sync the fix once no run uses its checkout, or, with the user's consent, give it its own worktree.
+5. **Close.** When this machine's runs have ended, fill its GPU hours line in section 5. Once every run on every machine has ended, set Status to Finish and Outcome, and tell the user.
 
    | Outcome | When |
    |---|---|
-   | Done | Every run in the approved plan finished, even if the success criteria are missed |
-   | Failed | The plan could not be completed: a crash, out of memory, or a divergence that could not be fixed |
-   | Invalid | The comparison cannot be trusted: mismatched evaluation code or data, a bug, or a plan change without a new approval |
+   | Done | Every approved run finished, criteria met or not |
+   | Failed | The plan could not be completed: a crash, out of memory, or an unfixable divergence |
+   | Invalid | The comparison cannot be trusted: mismatched evaluation code or data, a bug, or an unapproved plan change |
 
-   Go on with vrl-analyze-results for Done; for Failed or Invalid, give the user the reason and a proposal.
+   For Done, go on with vrl-analyze-results; otherwise give the user the reason and a proposal.
 
 ## Rules
 
-- At the start, run `bash <this skill's folder>/../vrl-init-workspace/scripts/check_update.sh` where the skills are installed, the local machine in remote mode. If it reports a newer release, tell the user once in the session, with the update command it prints, and go on; never update the skills unless the user asks.
-- Work from the root of a vibe-research-loop workspace, the directory with `AGENTS.md` and `docs/AGENTS/`, and follow its rules. Anywhere else, tell the user and stop.
-- If `docs/AGENTS/remote.md` exists, this machine computes on a remote host over SSH, and that file says where each path lives and where each command runs: every workspace path but `AGENTS.md` and `docs/AGENTS/` is in the remote workspace, read and written locally through the mount; everything but file edits, `ntn`, and web requests runs on the remote host through the SSH master. Never fall back to the local machine.
-- Use the `ntn` CLI for Notion, and look up its usage live: `ntn --help`, `ntn api ls`, `ntn api <path> -X <method> --spec`. Always run `ntn api ... < /dev/null`, or it waits on stdin.
-- Take the IDs of the project page and the databases from `docs/notion/ids.md`. If it is missing, find them with `ntn api v1/search` by exact title, reading every page of results; ask the user which project if several match, and record the IDs there in a table with the columns Object, Title in Notion, Page ID, Database ID, and Data source ID.
-- Create each new page from its database's template file, never from a template in Notion: `ideas.md`, `experiments.md`, `findings.md`, or `papers.md` in `<this skill's folder>/../vrl-init-workspace/references/guide/notion_guide/templates/`. Give the page the default properties in the file's header and the body below its line, written as the text above the line says. Check what you wrote by its blocks and their inline styles: the page's markdown export splits italic text around inline code into pieces that read as `**…**`.
-- Fill each section by its gray instructions; once it is filled, delete its gray instruction lines and any `…` placeholder left in it. A section that a later step fills keeps its instructions and placeholders until that step fills it. To see the instructions of a cleaned section, read them in the template file.
-- Write Notion pages in the language the workspace's language rules set for them, or else in the reply language. That covers the headings, labels, and table headers you take from a template, but not its gray instructions, which you copy unchanged. Use property names and the options of select and status properties exactly as the database defines them, and keep identifiers, code, paths, and commands as they are.
-- Write every page in sentences a colleague can follow without decoding. Common abbreviations such as w/, w/o, ckpt, bs, lr, approx., or SR are fine on their own, but never string abbreviations and symbols together with no words between them; spell an abbreviation out the first time only when it is uncommon in the field or made up for this project.
-- Keep each table cell short: a value, a phrase, or one sentence. When a cell holds several points, put each on its own line within the cell (a `\n` in its rich text, since a cell cannot hold list blocks), starting with `1.`, `2.` when their order matters and `•` otherwise. When a cell would run past three lines, move its content into a list right below the table and leave a short pointer in the cell.
-- Read a page before every write and read it back after; merge the user's edits instead of overwriting them.
-- The user reviews a page by coloring its text or the text's background: red marks what they think is wrong, orange what they did not understand, purple what they cannot accept; other colors are not marks. Before every write to a page, read the colors of all its text, table cells included (`annotations.color` of each rich-text item, and the block's `color`), and answer each mark, telling the user what you change and why: fix red text; explain orange text in plainer words and rewrite it so that it no longer needs the explanation; for purple text, propose an alternative and leave the text and its mark in place until the user decides. Write rewritten text without the mark, and leave every mark you have not resolved in place.
-- Add a figure by uploading its PNG with `ntn files create --filename <name>.png --content-type image/png < <file>`, then inserting it as an image block right above its caption.
-- Write times in the project's time zone, the `TZ` in the workspace's `.env`: `YYYY-MM-DD HH:MM` in text, and `"time_zone": "<TZ>"` on date properties.
-- Never make a Human-In-Loop decision: tick Human Approved, set Confirmed or Overturned, or change a Budget limit the user has set.
+- At the start, run `bash <kit>/scripts/check_update.sh`, where `<kit>` is `<this skill's folder>/../vrl-init-workspace`. Report a newer release once per session with its update command; update only when asked.
+- Work from a vibe-research-loop workspace root (with `AGENTS.md` and `docs/AGENTS/`) and follow its rules. Elsewhere, tell the user and stop.
+- If `docs/AGENTS/remote.md` exists, follow it. Edit here, send only commits with `vrl_ssh.sh sync`, and take pins and plan hashes from its output. Read results there; fetch only figures or lock files. Run no code here.
+- Never improvise what the scripts in `<kit>/scripts/` do: `launch_run.sh` starts every long-running command, `resources.sh` reports free GPUs, `gpu_hours.py` counts GPU hours, `vrl_ssh.sh` reaches the remote host. Read a script's `--help` only for an option no skill or rule file gives. If one refuses, tell the user why. Work around it only as a rule file says.
+- If `docs/AGENTS/feishu.md` exists, follow it instead wherever these instructions concern Notion.
+- For Notion, use the `ntn` CLI; see `ntn --help`, `ntn api ls`, `ntn api <path> -X <method> --spec`. Always run `ntn api ... < /dev/null`.
+- Take project page and database IDs from `docs/notion/ids.md`. If missing, find them by exact title with `ntn api v1/search`, reading all result pages. Ask the user if several projects match. Record them there in columns Object, Title in Notion, Page ID, Database ID, Data source ID.
+- Create each page from its database's template file in `<kit>/references/guide/notion_guide/templates/`, not a Notion template, with its header's default properties. Write each part only when you fill it, at its place, by its italic instructions. Leave no instruction text or `…`. When a page goes to review, rewrite its opening callout in place as its template says.
+- If headings differ from the template's, find sections by name and tell the user before writing.
+- Write pages, headings and labels included, in the language the workspace rules set, else the reply language. Use property and option names exactly as defined.
+- State each fact once, where it belongs, and elsewhere point to it unless a template asks otherwise. Give reasons only for deviations, controls, estimates, and ✘, or where a template asks. Spell out at first use abbreviations uncommon in the field or made up here. Never chain abbreviations and symbols without words.
+- Keep a table cell to a value, phrase, or sentence. Put several points on separate lines (`\n` in rich text), starting `1.`, `2.` if ordered, else `•`. Move content over three lines to a list below the table, leaving a pointer.
+- Read a page before and after every write; merge the user's edits. Read every color, table cells included: each rich-text item's `annotations.color` and the block's `color`. Red, orange, or purple text or background is a review mark. Answer each, telling the user what you change and why. Red (wrong): fix it. Orange (unclear): explain it plainly, and rewrite it to need no explanation. Purple (not acceptable): propose an alternative; keep the text and mark until the user decides. Rewritten text loses its mark. Unresolved marks stay.
+- Upload a figure's PNG with `ntn files create --filename <name>.png --content-type image/png < <file>` and place it as an image block right above its caption.
+- Write times in the `TZ` of `.env`: `YYYY-MM-DD HH:MM` in text, `"time_zone": "<TZ>"` on date properties.
+- Never make a Human-In-Loop decision: tick Human Approved, set Confirmed or Overturned, or change a Budget limit the user set.
