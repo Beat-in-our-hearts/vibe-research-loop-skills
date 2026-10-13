@@ -8,7 +8,7 @@
 
 ---
 
-> Capture one idea so a human can judge its feasibility before anything is built. Set a short, unique ID, e.g. `lr-warmup`, and write the hypothesis in short as the page title, at most 15 words, or 20 characters in Chinese. Draft the line of thought first: every section follows from it, and none repeats it.
+> Capture one idea so a human can judge its feasibility before anything is built. Every section follows from the line of thought, and none repeats it.
 
 <aside>
 💡 **Line of thought**

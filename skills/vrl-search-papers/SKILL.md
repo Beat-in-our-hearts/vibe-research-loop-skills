@@ -6,7 +6,7 @@ description: Search arXiv, Semantic Scholar, and Hugging Face Daily Papers for a
 # Search papers
 
 1. **Search.** Query arXiv, Semantic Scholar (with `fields=title,abstract,year,externalIds,url`), and Hugging Face Daily Papers (`huggingface.co/api/daily_papers?date=YYYY-MM-DD`) for the user's request, or else the Research Core's question, scope, and current direction; in post-experiment mode, for work that explains, supports, or contradicts the experiment's result, analyzed in its Results. Read each candidate's abstract, and the full text before adding it.
-2. **Admit.** Add at most three papers, each directly relevant to an active research question, offering a method, result, or evidence you would use or must compare against, and not in Papers yet by Link or title.
+2. **Admit.** Add at most three papers, each directly relevant to an active research question, offering a method, result, or evidence you would use or must compare against, and not in Papers yet by Link or title; better none than a poor one.
 3. **Page.** Create each in Papers with all its properties, reusing a Keyword before adding one, and fill sections 1–6 by the template.
 4. **Report.** List for the user the papers added and the close candidates left out, each with why; the added ones wait in the Review Queue for Human Approved.
 

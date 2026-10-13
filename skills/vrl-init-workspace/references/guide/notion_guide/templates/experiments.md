@@ -8,7 +8,7 @@
 
 ---
 
-> One page = one controlled experiment: the baseline, the treatment, and any ablations, compared side by side, for one stage of the idea, or the part of it that fits the budget left. Sections 1 and 2 are the plan: runs start only after a human ticks Human Approved. Sections 3 to 5 are written during and after the runs. Set a short, unique ID first, e.g. `lr-warmup-ablation`; it also names the output folder. The idea holds the hypothesis, the groups, and the success criteria: refer to them, quote only the criteria under Decided by, and never loosen them.
+> One page = one controlled experiment: the baseline, the treatment, and any ablations, compared side by side, for one stage of the idea, or the part of it that fits the budget left. Sections 1 and 2 are the plan, for approval; sections 3 to 5 are written during and after the runs. The idea holds the hypothesis, the groups, and the success criteria: refer to them, quote only the criteria under Decided by, and never loosen them.
 
 <aside>
 📋 **Review**
@@ -89,7 +89,7 @@
 
 ## 3. Logs
 
-*Overwrite the status row at every checkpoint, evaluation, and report. Under Curves, regenerate the training-loss and primary-metric curves from metrics.csv, one line per run, replacing the old figures. If the ETA drifts more than 20% from Est. Hours, update Est. Hours. Write every time in the project's time zone.*
+*Overwrite the status row at every checkpoint, evaluation, and report. Under Curves, regenerate the training-loss and primary-metric curves from metrics.csv, one line per run, replacing the old figures. If the ETA drifts more than 20% from Est. Hours, update Est. Hours.*
 
 | Runs | Latest metrics | Updated |
 |---|---|---|
@@ -120,7 +120,7 @@
 |---|---|---|
 | *…* | *…* | *…* |
 
-*Mark each check ✔ or ✘, with the reason for every ✘. The code-review check passes only after the user says they have reviewed the AI-generated code.*
+*Mark each check ✔ or ✘. The code-review check passes only after the user says they have reviewed the AI-generated code.*
 
 | Check | Pass |
 |---|---|

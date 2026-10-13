@@ -7,7 +7,7 @@
 
 ---
 
-> Admission bar: a paper enters only if it is directly relevant to an active research question and offers a method, result, or evidence we would use or must compare against. Better none than a poor one. A human ticks Human Approved after the review and deletes papers that fail it. Start by setting a short, unique ID, usually the method name and year, e.g. `mixup-2018`.
+> The ID is usually the method name and year, e.g. `mixup-2018`.
 
 ## 1. One-sentence summary
 

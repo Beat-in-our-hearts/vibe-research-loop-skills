@@ -1,12 +1,6 @@
 # Git
 
-**Git level for `main_repo` and its worktrees: manual commit.**
-
-| Level | Commits | Pushes |
-|---|---|---|
-| Manual commit | When the user asks | When the user asks |
-| Auto commit | On your own, when a change works and before each run you launch | When the user asks |
-| Auto push | As auto commit | After each commit, to the same remote branch |
+**Git level for `main_repo` and its worktrees: manual commit.** Commit and push only when the user asks.
 
 In every repository:
 

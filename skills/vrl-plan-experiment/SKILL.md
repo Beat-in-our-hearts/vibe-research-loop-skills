@@ -7,10 +7,10 @@ description: Plan the next experiment of an approved idea in a vibe-research-loo
 
 1. **Idea.** Take the idea the user names, or else the highest-Priority approved idea in Backlog. If its Human Approved is unchecked, tell the user and stop. Read it and its earlier experiments, and decide:
    - Stage: the one the latest experiment's Conclusion proposes, or else the earliest not yet run whose previous stage's Go on when holds.
-   - Budget left: each limit minus what the idea's experiments used: their number, the days to the Deadline, and single-GPU hours, from each finished experiment's GPU hours row plus `gpu_hours.py` on a running one's log folder, on each of its machines. If it exits 3, tell the user and stop.
+   - Budget left, as `pages.md` says.
    - Plan the whole stage if it fits the budget left, else the part that fits; if no useful part fits, tell the user and stop.
 2. **Facts.** Read-only: check the code, environments, checkpoints, and data the plan needs on the current machine (`docs/AGENTS/machine.md`); what is missing is setup work. Read the code the plan builds on, and trace one training batch from the data loader to the total loss.
-3. **Page.** Create the page in Experiments with Name (at most 15 words, or 20 characters in Chinese), ID (lowercase English words joined by hyphens, at most 24 characters, unique, never renamed), and Idea. If the idea's Status is Backlog, set it to Testing.
+3. **Page.** Create the page in Experiments with Name, ID, and Idea. If the idea's Status is Backlog, set it to Testing.
 4. **Draft.** Fill the Review callout, then sections 1 and 2, by the template.
 5. **Setup.** Do the setup steps of section 1 in order: the code and one config per run, by the git rules; the environments and data; the plan file, as in step 6; last, a short smoke run of each block's command, unchanged but for overrides that shorten it: `launch_run.sh --purpose '<date>-<name> / smoke <run>' --log logs/<date>-<name>/smoke-<run>.log --outputs tmp/smoke/<date>-<name>/<run>/ --code <checkout> --gpus <free ids from resources.sh> --machine <Name> --tmux <session> --wait <seconds> -- '<command>'`.
    - `launch_run.sh --pin <checkout>` must print the same before and after each smoke run. If not, send what the run wrote into the checkout to `$VRL_OUTPUTS`, or ignore it in the committed `.gitignore`, and smoke-run again.

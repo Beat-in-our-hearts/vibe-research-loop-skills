@@ -14,14 +14,19 @@ How to read and write the pages of the research memory. Where `docs/AGENTS/feish
 
 - Create each page from its database's template file in `guide/notion_guide/templates/` beside this file, not a Notion template, with the default properties in its header. Below the template's line is the page body: write each part only when you fill it, at its place, by its italic instructions. Italic text and the opening quote never go into the page; plain text goes in as it is. Leave no instruction text or `…`.
 - An `<aside>` is a callout with the icon and background in its template's header. Write it first, with the first sections you fill; when a page goes to review, rewrite it in place as its template says.
+- Give a new idea, experiment, or finding a Name of at most 15 words, or 20 characters in Chinese. Give every new page an ID of lowercase English words joined by hyphens, at most 24 characters, unique, and never renamed.
 - If headings differ from the template's, find sections by name and tell the user before writing.
 
 ## Writing
 
 - Write pages, headings and labels included, in the language the workspace rules set, else the reply language. Use property and option names exactly as defined.
-- State each fact once, where it belongs, and elsewhere point to it unless a template asks otherwise. Give reasons only for deviations, controls, estimates, and ✘, or where a template asks. Spell out at first use abbreviations uncommon in the field or made up here. Never chain abbreviations and symbols without words.
+- State each fact once, where it belongs, and elsewhere point to it unless a template asks otherwise. Give a reason for each deviation, control, estimate, and ✘, and elsewhere only where a template asks. Spell out at first use abbreviations uncommon in the field or made up here. Never chain abbreviations and symbols without words.
 - Keep a table cell to a value, phrase, or sentence. Put several points on separate lines (`\n` in rich text), starting `1.`, `2.` if ordered, else `•`. Move content over three lines to a list below the table, leaving a pointer.
 - Write times in the `TZ` of `.env`, as `YYYY-MM-DD HH:MM` in text.
+
+## Budget left
+
+An idea's budget left is each of its Budget limits minus what its experiments used: their number, the days to the Deadline, and single-GPU hours, from each finished experiment's GPU hours row plus `gpu_hours.py` on a running one's log folder, on each of its machines. If `gpu_hours.py` exits 3, the hours are unknown: tell the user and stop.
 
 ## Review marks
 

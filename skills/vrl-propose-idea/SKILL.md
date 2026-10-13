@@ -8,7 +8,7 @@ description: Write a testable research hypothesis into a vibe-research-loop proj
 1. **Context.** Read the Research Core with its Direction Log, Ideas, and the idea's sources. If Ideas has the idea already, point the user to it instead.
 2. **Facts.** Before writing, settle every fact the idea rests on, read-only: keep the settings the user named, and confirm any you infer; cite a source for each number, and mark what nobody measured as an estimate. Leave checking code and data to the experiment's plan.
 3. **Line of thought.** Draft it first, by the template; every section must follow from it.
-4. **Page.** Create one page in Ideas per falsifiable hypothesis, with Name, ID (lowercase hyphenated English, at most 24 characters, unique, never renamed), Priority (your proposal), and Related (its source pages).
+4. **Page.** Create one page in Ideas per falsifiable hypothesis, with Name (the hypothesis in short), ID, Priority (your proposal), and Related (its source pages).
 5. **Body.** Fill the line of thought and sections 1–3 by the template.
 6. **Self-review.** Read the page as the user would, and revise it until every answer is yes:
    - Can a reader tell how many groups run, what each changes, and why?

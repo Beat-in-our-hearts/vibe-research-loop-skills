@@ -18,16 +18,7 @@
 
 ## Fields
 
-The tables have the Notion databases' fields and options, with the same English names, except:
-
-| In Notion | In Feishu |
-|---|---|
-| Status | A single select with the same options, without groups |
-| Related, @mentions | Link fields `Related Ideas`, `Related Experiments`, `Related Findings`; anything outside the Base, such as a paper, goes in `Related Links`, a text field |
-| Idea, a one-way relation | `Idea`, a one-way link field to Ideas |
-| Progress, a formula | The guide's logic, with `LEFT("██████████", n)` and `LEFT("░░░░░░░░░░", 10 - n)` for the missing `REPT`, and the hours as `(NOW() - [Started]) * 24`, since `DAYS` gives whole days |
-| A date with its time zone | A date-time field |
-| — | `Page`: a URL field holding the entry's doc |
+The tables have the Notion databases' fields and options, with the same English names, except: Related and @mentions between records are the link fields `Related Ideas`, `Related Experiments`, and `Related Findings`, and anything outside the Base, such as a paper, goes in the text field `Related Links`; `Idea` is a one-way link field to Ideas; and the URL field `Page` holds the entry's doc.
 
 ## Doing what a skill asks
 

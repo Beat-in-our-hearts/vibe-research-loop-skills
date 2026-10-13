@@ -10,7 +10,7 @@ description: Analyze a finished experiment in a vibe-research-loop workspace: re
 3. **Figures.** Draw the figures by the same section.
 4. **Literature.** Run vrl-search-papers in its post-experiment mode.
 5. **Page.** Fill section 4, and the Criteria met and Reproduce rows of section 5.
-6. **Budget.** Count the idea's budget left, as step 1 of vrl-plan-experiment does.
+6. **Budget.** Count the idea's budget left, as `pages.md` says.
 7. **Next.** If the full test met its success criteria, a Budget limit is reached, or several experiments in a row brought no gain, stop iterating and draft the finding with vrl-write-finding. Otherwise propose in the Next step row the next stage if this one met its Go on when, else this stage again with one change. Rewrite the Review callout for the results, then show the user Table 1, the figures, and the next step.
 
 ## Rules

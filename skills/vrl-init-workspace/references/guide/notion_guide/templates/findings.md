@@ -8,7 +8,7 @@
 
 ---
 
-> A finding reads like the experiments section of an academic paper: rigorous, rich in figures and tables, and complete on its own, so that a reader follows the claim without opening an experiment page; it restates the setup and the numbers its claim needs. Most findings are negative results: record a failure as carefully as a success. It may rest on an idea's experiments, or stand on its own, such as a performance test or a code optimization. The page title is the claim; it counts only once a human confirms it. Set a short, unique ID first, e.g. `warmup-gain`.
+> A finding reads like the experiments section of an academic paper: rigorous, rich in figures and tables, and complete on its own, so that a reader follows the claim without opening an experiment page; it restates the setup and the numbers its claim needs. Most findings are negative results: record a failure as carefully as a success.
 
 <aside>
 📋 **Conclusion**

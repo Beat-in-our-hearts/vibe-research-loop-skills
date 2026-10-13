@@ -7,6 +7,13 @@ Use these instead of the guide's Notion prompts when the user keeps the research
 - Never overwrite an existing node: if one with the same title exists, show it to the user and ask, unless a step below says to reuse it.
 - Create a doc at the top of the space with `wiki +node-create --obj-type docx`, and a child doc with `docs +create --parent-token <parent node>`. Create a Base with `base +base-create --time-zone <TZ> --table-name <first table> --fields <fields>`, which drops the default table, then move it under its node with `wiki +move --obj-type bitable`. Rename each table's default view to the first view `databases.md` lists, rather than deleting it.
 - The Base `Papers` and the doc `Papers` share a title: tell them apart by their object type.
+- Build the tables with the fields of `databases.md`, changed as below and as the rule file's Fields section says:
+
+  | In Notion | In Feishu |
+  |---|---|
+  | Status | A single select with the same options, without groups |
+  | Progress, a formula | The guide's logic, with `LEFT("██████████", n)` and `LEFT("░░░░░░░░░░", 10 - n)` for the missing `REPT`, and the hours as `(NOW() - [Started]) * 24`, since `DAYS` gives whole days |
+  | A date with its time zone | A date-time field |
 
 ## Set up Feishu
 
