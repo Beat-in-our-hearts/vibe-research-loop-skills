@@ -22,4 +22,4 @@ In Codex, prefix rules match whole arguments and cannot deny an argument anywher
 
 Tell the user what the rules leave open: they match a command's text, so a call written another way can slip past a deny; the allowed page writes can still tick Human Approved or change the Code row; and only these rules and the skill's steps keep the watch from launching a plan the user did not approve.
 
-Then tell the user the window, the approved runs in line, and the morning report's time.
+Then tell the user the window, the approved runs in line, and the morning report's time. If no automation or job runs the watch yet, tell them how to start it: `/loop /vrl-night-watch` with no interval in Claude Code; a Codex automation running `$vrl-night-watch` every 30 minutes in the workspace, not a worktree; or a cron job every half hour.

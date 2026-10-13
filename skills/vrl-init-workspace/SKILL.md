@@ -1,6 +1,6 @@
 ---
 name: vrl-init-workspace
-description: Initialize a vibe-research-loop workspace in the current directory, or add this machine to one - the workspace, the memory store (Notion, or Feishu) with its CLI and pages, and optionally a Hugging Face bucket - in local or remote (SSH) mode. Can also redo a single part.
+description: Set up a vibe-research-loop workspace here, or add this machine to one: the workspace, the memory store (Notion or Feishu), and optionally a Hugging Face bucket, in local or remote (SSH) mode. Can also redo a single part.
 disable-model-invocation: true
 ---
 

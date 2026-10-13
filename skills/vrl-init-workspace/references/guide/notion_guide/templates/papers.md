@@ -5,8 +5,6 @@
 | Database | Papers (Literature Library) |
 | Default properties | Human Approved = unchecked |
 
-Everything below the line is the body of a new page in the database. The agent that creates a page gives it the default properties above and writes the body in order, each part when it fills it, so the database needs no template in Notion. Text in *italics* is instructions for that agent: they stay in this file and never go into the page, and neither does the opening quote.
-
 ---
 
 > Admission bar: a paper enters only if it is directly relevant to an active research question and offers a method, result, or evidence we would use or must compare against. Better none than a poor one. A human ticks Human Approved after the review and deletes papers that fail it. Start by setting a short, unique ID, usually the method name and year, e.g. `mixup-2018`.
@@ -39,9 +37,7 @@ Everything below the line is the body of a new page in the database. The agent t
 
 ## 4. Key results
 
-*Only the results that matter: datasets, baselines, the key numbers, and the ablation findings. Show them in figures and tables, never in text alone: Table 1 plus at least one figure, either the paper's own figure cropped from the PDF, with its original number in the caption, or a chart redrawn from numbers in the paper. Every number cites where it appears in the paper (section, table, or figure); never write a number that was not read in the paper itself.*
-
-*Publication style. Redrawn figures: axes with quantity and unit; one colorblind-safe color per method; no 3D, pie charts, or titles inside the plot. Tables: units and ↑ or ↓ in the header; the best result in bold, the second best underlined; the same decimals within a column. Captions: numbered, stating what is shown, where it comes from in the paper, and the takeaway; below a figure, above a table.*
+*Only the results that matter: datasets, baselines, the key numbers, and the ablation findings. Show them in figures and tables, never in text alone: Table 1 plus at least one figure, either the paper's own figure cropped from the PDF, with its original number in the caption, or a chart redrawn from numbers in the paper, in the style of `<kit>/references/figures.md`. Every number cites where it appears in the paper (section, table, or figure); never write a number that was not read in the paper itself.*
 
 **Table 1.** *…*
 

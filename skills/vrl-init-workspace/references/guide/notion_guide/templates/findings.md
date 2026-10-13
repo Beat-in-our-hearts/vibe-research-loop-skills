@@ -4,8 +4,7 @@
 |---|---|
 | Database | Findings |
 | Default properties | Status = Under Review |
-
-Everything below the line is the body of a new page in the database. The agent that creates a page gives it the default properties above and writes each part of the body only when it fills it, at its place below, so the database needs no template in Notion. The callout comes first: it is written with the sections and rewritten in place each time the page goes to review. Text in *italics* is instructions for that agent: they stay in this file and never go into the page, and neither does the opening quote; plain text outside the italics goes into the page as it is. The `<aside>` block is a callout with the 📋 icon and a gray background.
+| Callout | 📋 icon, gray background |
 
 ---
 
@@ -37,9 +36,7 @@ Everything below the line is the body of a new page in the database. The agent t
 
 ## 2. Results
 
-*At least one table and two figures, of the kinds the data calls for: learning curves, bars with error bars, ablation or sensitivity plots, heatmaps, or qualitative examples; add more for ablations and secondary metrics. Draw each with a script from the result files, never by hand, and save it as PDF and PNG with its script under `runs/findings/<date>-<id>/`, where `<date>` is this page's Created date and `<id>` its ID; an experiment's figure may be used as it is when it already meets these rules. After each table or figure, one paragraph of analysis that cites it by number: what it shows, what it means for the claim, and how it compares with the expectation. Report mean ± std over seeds or repeats, and the difference from the baseline with its p-value from Table 1.*
-
-*Publication style. Figures: axes with quantity and unit; mean ± std as error bars or shaded bands; one colorblind-safe color per setting across all figures; no 3D, pie charts, or titles inside the plot. Tables: units and ↑ or ↓ in the header; the best result in bold, the second best underlined; the same decimals within a column. Captions: numbered, stating what is shown, the number of seeds, and the takeaway; below a figure, above a table.*
+*At least one table and two figures, of the kinds the data calls for: learning curves, bars with error bars, ablation or sensitivity plots, heatmaps, or qualitative examples; add more for ablations and secondary metrics. Draw each with a script from the result files, in the style of `<kit>/references/figures.md`, and save it as PDF and PNG with its script under `runs/findings/<date>-<id>/`, where `<date>` is this page's Created date and `<id>` its ID; an experiment's figure may be used as it is when it already meets that style. After each table or figure, one paragraph of analysis that cites it by number: what it shows, what it means for the claim, and how it compares with the expectation. Report mean ± std over seeds or repeats, and the difference from the baseline with its p-value from Table 1.*
 
 **Table 1.** *…*
 

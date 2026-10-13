@@ -4,8 +4,7 @@
 |---|---|
 | Database | Experiments |
 | Default properties | Status = Planned · Human Approved = unchecked |
-
-Everything below the line is the body of a new page in the database. The agent that creates a page gives it the default properties above and writes each part of the body only when it fills it, at its place below, so the database needs no template in Notion. The callout comes first: it is written with sections 1 and 2 and rewritten in place each time the page goes to review. Text in *italics* is instructions for that agent: they stay in this file and never go into the page, and neither does the opening quote. The `<aside>` block is a callout with the 📋 icon and a gray background.
+| Callout | 📋 icon, gray background |
 
 ---
 
@@ -37,7 +36,7 @@ Everything below the line is the body of a new page in the database. The agent t
 | baseline | *…* | *…* | *…* | *…* | *…* |
 | treatment | *…* | *…* | *…* | *…* | *…* |
 
-**Deviations.** *Numbered, one line each, with its reason: every difference from the idea's Planned test or from the stage, every part of the stage left out to fit the budget, and any time above the stage's. Write "None." when there is none. Approving the plan accepts them; a change after approval needs a new approval.*
+**Deviations.** *Numbered, one line each, with its reason: every difference from the idea's Planned test or from the stage, every part of the stage left out to fit the budget, and any time above the stage's. Write "None." when there is none. Approving the plan accepts them.*
 
 1. *…*
 
@@ -106,7 +105,7 @@ Everything below the line is the body of a new page in the database. The agent t
 
 ## 4. Results
 
-*Compute from the final metrics files: mean ± std over seeds, the difference from the baseline, and its significance with the test named under Evaluation in section 2, from the per-seed values; round consistently, and investigate a result that looks too good before reporting it. Table 1 and at least one figure, such as the primary metric per run with error bars; save each figure as PDF and PNG, with the script that draws it, under `runs/<date>-<name>/figures/`. Figures: drawn by a script from the result files; axes with quantity and unit; mean ± std as error bars or shaded bands; one colorblind-safe color per run across all figures; no 3D, pie charts, or titles inside the plot. Tables: units and ↑ or ↓ in the header; the best result in bold, the second best underlined; the same decimals within a column. Captions: numbered, stating what is shown, the number of seeds, and the takeaway; below a figure, above a table. Observations: one row per thing worth knowing that Table 1 does not already say, surprises and failures included, each with its evidence: a figure, a run, or a paper from the post-experiment search.*
+*Compute from the final metrics files: mean ± std over seeds, the difference from the baseline, and its significance with the test named under Evaluation in section 2, from the per-seed values; round consistently, and investigate a result that looks too good before reporting it. Table 1 and at least one figure, such as the primary metric per run with error bars, in the style of `<kit>/references/figures.md`; save each figure as PDF and PNG, with the script that draws it, under `runs/<date>-<name>/figures/`. Observations: one row per thing worth knowing that Table 1 does not already say, surprises and failures included, each with its evidence: a figure, a run, or a paper from the post-experiment search.*
 
 **Table 1.** *…*
 

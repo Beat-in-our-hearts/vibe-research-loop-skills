@@ -181,7 +181,19 @@ main() {
 
 	# Refusals.
 	if scheduler_here; then
-		err "This machine has a job scheduler: launch through it as docs/AGENTS/machine.md says, by hand."
+		err "This machine has a job scheduler: launch through it as docs/AGENTS/machine.md says, by hand, and write the log's header and footer yourself, in this form:"
+		cat >&2 <<'EOF'
+# command:   <the exact command>
+# purpose:   <date>-<name> / <run>: <one line>
+# code:      <checkout> (<branch>) @ <commit> (clean or dirty)
+# resources: <machine>, GPU <ids> (<model>)      or: <machine>, no GPU
+# session:   job <job ID>
+# started:   <YYYY-MM-DD HH:MM:SS ±HH:MM>
+# ---------- stdout + stderr ----------
+<output>
+# ---------- end ----------
+# finished:  <YYYY-MM-DD HH:MM:SS ±HH:MM> (<H:MM:SS>), exit code <n>
+EOF
 		return 3
 	fi
 	[ -f .env ] || { err "Run this from the workspace root: there is no .env here"; return 2; }
@@ -487,6 +499,9 @@ CR="$(printf '\r')"
 SECRET_RE='(hf_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[bpas]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|(^|[^A-Za-z0-9_])((hf|wandb|openai|anthropic|gh|github|api|auth|access|secret|private)_?(token|key|secret)|password|passwd)=[^$[:space:]])'
 
 err() { printf 'launch_run: %s\n' "$*" >&2; }
+mirror_fix() {
+	err "Once the user decides: discard a change through vrl_ssh.sh run, by deleting the untracked file or with git -C $1 checkout -- <path>; to keep one, read it with git -C $1 diff, discard it, redo it on the local machine, commit, and sync again."
+}
 
 # Quote a string for any shell of the sh family.
 sq() {
@@ -1044,6 +1059,7 @@ sync_apply() {
 				if [ -n "$there" ]; then
 					err "The mirror $dir holds changes that no sync made, such as files a run wrote there or an edit on the remote host: show the user this list, who decides what to keep; never touch the mirror's files unless they ask."
 					printf '%s\n' "$there" >&2
+					mirror_fix "$dir"
 					return 3
 				fi
 				old="$prev"
@@ -1055,6 +1071,7 @@ sync_apply() {
 					*)
 						err "The mirror $dir holds changes that no sync made, such as files a run wrote there or an edit on the remote host: show the user this list, who decides what to keep; never touch the mirror's files unless they ask."
 						git_safe "$dir" status --short --untracked-files=all 2>/dev/null | head -n 40 >&2
+						mirror_fix "$dir"
 						return 3
 						;;
 				esac
@@ -1081,6 +1098,7 @@ sync_apply() {
 	if [ $? != 1 ]; then
 		err "The mirror $dir differs from its commit after the checkout, such as by files the new commit no longer ignores: show the user this list, who decides; never touch the mirror's files unless they ask"
 		git_safe "$dir" status --short --untracked-files=all 2>/dev/null | head -n 40 >&2
+		mirror_fix "$dir"
 		return 4
 	fi
 	gd="$(git_dir_of "$dir")" && [ -d "$gd" ] || return 4

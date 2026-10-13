@@ -4,8 +4,7 @@
 |---|---|
 | Database | Ideas |
 | Default properties | Status = Backlog · Human Approved = unchecked |
-
-Everything below the line is the body of a new page in the database. The agent that creates a page gives it the default properties above and writes each part of the body only when it fills it, at its place below, so the database needs no template in Notion. The callout comes first: it is written with the sections and rewritten in place each time the page goes to review. Text in *italics* is instructions for that agent: they stay in this file and never go into the page, and neither does the opening quote; plain text outside the italics goes into the page as it is. The `<aside>` block is a callout with the 💡 icon and a blue background.
+| Callout | 💡 icon, blue background |
 
 ---
 
