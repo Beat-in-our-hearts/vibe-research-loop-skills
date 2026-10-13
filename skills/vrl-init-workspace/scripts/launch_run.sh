@@ -57,6 +57,25 @@ Exit codes: 0 running, or ended with exit code 0 within the wait; 1 ended with a
 did not start; 2 bad arguments, or the tmux session is missing; 3 refused.
 On the local machine of a remote-mode workspace, every form exits 2: run it on the remote host
 through vrl_ssh.sh script. Never run --sync-prepare or --sync-apply: vrl_ssh.sh sync does.
+
+On a machine with a job scheduler, launch through the scheduler, and write the log's header and
+footer by hand, in this form:
+EOF
+	scheduler_form
+}
+
+scheduler_form() {
+	cat <<'EOF'
+# command:   <the exact command>
+# purpose:   <date>-<name> / <run>: <one line>
+# code:      <checkout> (<branch>) @ <commit> (clean or dirty)
+# resources: <machine>, GPU <ids> (<model>)      or: <machine>, no GPU
+# session:   job <job ID>
+# started:   <YYYY-MM-DD HH:MM:SS ±HH:MM>
+# ---------- stdout + stderr ----------
+<output>
+# ---------- end ----------
+# finished:  <YYYY-MM-DD HH:MM:SS ±HH:MM> (<H:MM:SS>), exit code <n>
 EOF
 }
 
@@ -181,19 +200,8 @@ main() {
 
 	# Refusals.
 	if scheduler_here; then
-		err "This machine has a job scheduler: launch through it as docs/AGENTS/machine.md says, by hand, and write the log's header and footer yourself, in this form:"
-		cat >&2 <<'EOF'
-# command:   <the exact command>
-# purpose:   <date>-<name> / <run>: <one line>
-# code:      <checkout> (<branch>) @ <commit> (clean or dirty)
-# resources: <machine>, GPU <ids> (<model>)      or: <machine>, no GPU
-# session:   job <job ID>
-# started:   <YYYY-MM-DD HH:MM:SS ±HH:MM>
-# ---------- stdout + stderr ----------
-<output>
-# ---------- end ----------
-# finished:  <YYYY-MM-DD HH:MM:SS ±HH:MM> (<H:MM:SS>), exit code <n>
-EOF
+		err "This machine has a job scheduler: launch through it as docs/AGENTS/machine.md says, by hand, and write the log's header and footer yourself, in this form, which --help also gives:"
+		scheduler_form >&2
 		return 3
 	fi
 	[ -f .env ] || { err "Run this from the workspace root: there is no .env here"; return 2; }

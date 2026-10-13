@@ -36,7 +36,7 @@
 
 ## 2. Results
 
-*At least one table and two figures, of the kinds the data calls for: learning curves, bars with error bars, ablation or sensitivity plots, heatmaps, or qualitative examples; add more for ablations and secondary metrics. Draw each with a script from the result files, in the style of `<kit>/references/figures.md`, and save it as PDF and PNG with its script under `runs/findings/<date>-<id>/`, where `<date>` is this page's Created date and `<id>` its ID; an experiment's figure may be used as it is when it already meets that style. After each table or figure, one paragraph of analysis that cites it by number: what it shows, what it means for the claim, and how it compares with the expectation. Report mean ± std over seeds or repeats, and the difference from the baseline with its p-value from Table 1.*
+*At least one table and two figures, in the style of `<kit>/references/figures.md`, of the kinds the data calls for: learning curves, bars with error bars, ablation or sensitivity plots, heatmaps, or qualitative examples; add more for ablations and secondary metrics. Draw each with a script from the result files, and save it as PDF and PNG with its script under `runs/findings/<date>-<id>/`, where `<date>` is this page's Created date and `<id>` its ID; an experiment's figure may be used as it is when it already meets that style. After each table or figure, one paragraph of analysis that cites it by number: what it shows, what it means for the claim, and how it compares with the expectation. Report mean ± std over seeds or repeats, and the difference from the baseline with its p-value from Table 1.*
 
 **Table 1.** *…*
 

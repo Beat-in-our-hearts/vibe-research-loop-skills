@@ -1,11 +1,11 @@
 # Pages
 
-How to read and write the pages of the research memory. Where `docs/AGENTS/feishu.md` exists, skip the Notion section: that file says what each Notion step becomes.
+How to read and write the pages of the research memory. Where `docs/AGENTS/feishu.md` exists, skip the Notion section: that file says what each Notion step becomes. If several projects match a title you look up, ask the user which one.
 
 ## Notion
 
 - Use the `ntn` CLI; see `ntn --help`, `ntn api ls`, `ntn api <path> -X <method> --spec`. Always run `ntn api ... < /dev/null`.
-- Take project page and database IDs from `docs/notion/ids.md`. If missing, find them by exact title with `ntn api v1/search`, reading all result pages. Ask the user if several projects match. Record them there in columns Object, Title in Notion, Page ID, Database ID, Data source ID.
+- Take project page and database IDs from `docs/notion/ids.md`. If missing, find them by exact title with `ntn api v1/search`, reading all result pages. Record them there in columns Object, Title in Notion, Page ID, Database ID, Data source ID.
 - Review colors are each rich-text item's `annotations.color` and the block's `color`.
 - Upload a figure's PNG with `ntn files create --filename <name>.png --content-type image/png < <file>` and place it as an image block right above its caption.
 - Date properties take `"time_zone": "<TZ>"`.

@@ -36,7 +36,7 @@
 
 ## Sync
 
-Code reaches the remote host only as commits, through `vrl_ssh.sh sync`. Commit, push, and pull only here, never in a mirror.
+Code reaches the remote host only as commits, through `vrl_ssh.sh sync`. Commit, push, and pull only here, never in a mirror. A run starts only from a commit, never from a saved diff.
 
 - Before a remote command uses changed code, plans, or tests, commit them as the git rules allow and sync each checkout they touch: `.` for the workspace repository, a worktree after its own checkout.
 - Take pins and plan hashes only from a sync's output, which prints them even when nothing changed.

@@ -37,7 +37,7 @@
 
 ## 4. Key results
 
-*Only the results that matter: datasets, baselines, the key numbers, and the ablation findings. Show them in figures and tables, never in text alone: Table 1 plus at least one figure, either the paper's own figure cropped from the PDF, with its original number in the caption, or a chart redrawn from numbers in the paper, in the style of `<kit>/references/figures.md`. Every number cites where it appears in the paper (section, table, or figure); never write a number that was not read in the paper itself.*
+*Only the results that matter: datasets, baselines, the key numbers, and the ablation findings. Show them in figures and tables, never in text alone, in the style of `<kit>/references/figures.md`: Table 1 plus at least one figure, either the paper's own figure cropped from the PDF, with its original number in the caption, or a chart redrawn from numbers in the paper. Every number cites where it appears in the paper (section, table, or figure); never write a number that was not read in the paper itself.*
 
 **Table 1.** *…*
 

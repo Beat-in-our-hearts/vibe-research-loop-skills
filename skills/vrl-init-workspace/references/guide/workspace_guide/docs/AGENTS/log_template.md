@@ -10,3 +10,5 @@ The command starts in the workspace root, so it enters its checkout itself, as i
 - Read a log's header with `head` and its end with `tail` first. A log without a footer is still running, or was killed.
 - Stop a run with `kill <PID>` from its header's session line, or by closing its tmux window.
 - Start an ended run again only with `--restart`, once the cause of its crash or failure is fixed, or with `--resume`, to continue one that ended with exit code 0.
+
+On a machine with a job scheduler, launch through it as `docs/AGENTS/machine.md` says, and write the log's header and footer by hand, in the form `launch_run.sh --help` gives.
